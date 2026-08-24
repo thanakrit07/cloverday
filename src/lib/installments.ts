@@ -146,37 +146,31 @@ export function useCreateInstallment(householdId: string) {
 }
 
 /**
- * Saves an edit to the plan row — and, when the name changed, carries that one
- * field down to the periods already in the ledger (D15 as amended in v4.3).
+ * Saves an edit to the plan row — and brings the notes on the periods it has
+ * already posted back in line with it (D15 as amended in v4.3).
  *
- * `previous` is what the plan read before the edit, which the caller has and
- * the database no longer does: the rename recognises the labels it may
- * overwrite by rebuilding them from the old name, so it has to be passed the
- * old name. Everything else about a posted period stays where it was posted.
+ * The resync runs on **every** save, not only when the name field changed:
+ * `periodsToRename` recognises a generated label by its shape rather than by
+ * the name it was posted under, so opening a plan whose periods drifted out of
+ * sync — renamed before this existed, say — and pressing Save is what repairs
+ * it. Rows already correct produce no write.
  */
 export function useUpdateInstallment(householdId: string) {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async ({
-      id,
-      input,
-      previous,
-    }: {
-      id: string
-      input: Partial<InstallmentInput>
-      previous?: Installment
-    }) => {
+    mutationFn: async ({ id, input }: { id: string; input: Partial<InstallmentInput> }) => {
       const { error } = await supabase.from('installments').update(input).eq('id', id)
       if (error) throw error
 
-      if (!previous || input.name == null || input.name === previous.name) return
+      // Both halves of the label have to be known to write one; the edit sheet
+      // always sends a whole plan, so this only skips a caller that patches a
+      // single field.
+      if (input.name == null || input.total_periods == null) return
       try {
-        await renameInstallmentPeriods(
-          householdId,
-          id,
-          { name: previous.name, totalPeriods: previous.total_periods },
-          { name: input.name, totalPeriods: input.total_periods ?? previous.total_periods },
-        )
+        await renameInstallmentPeriods(householdId, id, {
+          name: input.name,
+          totalPeriods: input.total_periods,
+        })
       } catch (renameError) {
         // The plan is saved; only its posted labels are stale. Failing the
         // whole mutation here would tell the user an edit that did land had

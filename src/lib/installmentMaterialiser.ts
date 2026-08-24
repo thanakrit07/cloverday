@@ -185,9 +185,15 @@ export async function materialiseInstallmentsDue(
 // period the plan posted, settled ones included: a ledger listing the same debt
 // under two names is worse than one that renames its own history.
 //
-// The guard is recognition, not a timestamp: a period is rewritten only where
-// its note still reads exactly as `periodNote` wrote it. Anything a human has
-// since typed over no longer matches, and is left alone.
+// **The guard recognises the shape of a generated label, not one particular
+// name.** The first version compared each note against the name the plan was
+// being renamed *from*, which quietly excluded the plans that needed this most:
+// one renamed before this shipped has periods carrying a name the plan no
+// longer holds, so nothing matched and no later rename could ever repair it.
+// A label this app wrote ends in `(งวดที่ n/total)` with an `n` that agrees
+// with the row's own `source_key`; a note somebody typed does not. Matching on
+// that lets a drifted plan come back into line while still leaving hand-written
+// notes alone.
 
 /** What `periodsToRename` needs off a posted period; the query selects exactly this. */
 export interface PostedPeriodNote {
@@ -196,34 +202,47 @@ export interface PostedPeriodNote {
   note: string | null
 }
 
-/** Both halves of the label, before and after — the count is in it too. */
+/** The label the plan should be carrying now. */
 export interface PeriodLabel {
   name: string
   totalPeriods: number
 }
 
+// Anchored at both ends, so a note that merely mentions a period somewhere in
+// the middle is not mistaken for a generated one. The name is `(.*)` because it
+// is whatever the plan was called at the time -- possibly a name that has since
+// been changed twice, which is exactly the case the first version missed.
+const GENERATED_NOTE = /^(.*) \(งวดที่ (\d+)\/(\d+)\)$/
+
 /**
- * Which posted periods a rename may rewrite, and to what.
+ * True when this note is one `periodNote` wrote for this very period.
+ *
+ * The period number inside the label has to agree with the one in the row's
+ * `source_key`: that is what a coincidence would fail, and it costs nothing.
+ */
+export function isGeneratedPeriodNote(note: string | null, periodNo: number): boolean {
+  const match = note?.match(GENERATED_NOTE)
+  return match != null && Number(match[2]) === periodNo
+}
+
+/**
+ * Which posted periods a save may relabel, and to what.
  *
  * Pure, so the recognition rule can be tested without a database: rows whose
- * note has been hand-edited, rows belonging to another plan, and rows that
+ * note has been hand-written, rows belonging to another plan, and rows that
  * already read correctly all drop out here.
  */
 export function periodsToRename(
   rows: PostedPeriodNote[],
   installmentId: string,
-  previous: PeriodLabel,
-  next: PeriodLabel,
+  target: PeriodLabel,
 ): { id: string; note: string }[] {
   const updates: { id: string; note: string }[] = []
   for (const row of rows) {
     const parsed = parsePeriodSourceKey(row.source_key)
     if (!parsed || parsed.installmentId !== installmentId) continue
-    // Matched against the count the row was *posted* with, not the current
-    // one: renaming and re-counting in the same save must still recognise
-    // the label it is replacing.
-    if (row.note !== periodNote(previous.name, parsed.periodNo, previous.totalPeriods)) continue
-    const note = periodNote(next.name, parsed.periodNo, next.totalPeriods)
+    if (!isGeneratedPeriodNote(row.note, parsed.periodNo)) continue
+    const note = periodNote(target.name, parsed.periodNo, target.totalPeriods)
     if (note === row.note) continue
     updates.push({ id: row.id, note })
   }
@@ -231,7 +250,7 @@ export function periodsToRename(
 }
 
 /**
- * Rewrites the note on every period this plan posted under its old name.
+ * Brings the notes on every period this plan posted back in line with the plan.
  *
  * Returns how many rows were rewritten. Never throws for a row it could not
  * update: the plan itself has already been saved by the time this runs, and a
@@ -240,11 +259,8 @@ export function periodsToRename(
 export async function renameInstallmentPeriods(
   householdId: string,
   installmentId: string,
-  previous: PeriodLabel,
-  next: PeriodLabel,
+  target: PeriodLabel,
 ): Promise<number> {
-  if (previous.name === next.name && previous.totalPeriods === next.totalPeriods) return 0
-
   const { data, error } = await supabase
     .from('transactions')
     .select('id, source_key, note')
@@ -254,7 +270,7 @@ export async function renameInstallmentPeriods(
     .is('deleted_at', null)
   if (error) throw error
 
-  const updates = periodsToRename((data ?? []) as PostedPeriodNote[], installmentId, previous, next)
+  const updates = periodsToRename((data ?? []) as PostedPeriodNote[], installmentId, target)
   if (updates.length === 0) return 0
 
   // One statement per row, since each carries its own period number. A plan is
