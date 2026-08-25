@@ -26,6 +26,8 @@ import type { EntryPrefill } from '@/lib/entryPrefill'
 import { useAccounts } from '@/lib/accounts'
 import { useCards } from '@/lib/cards'
 import { useHousehold } from '@/lib/HouseholdContext'
+import { installmentPeriodLabel } from '@/lib/installmentLabel'
+import { useInstallmentLabels } from '@/lib/installments'
 import { toBuddhistYear } from '@/lib/month'
 import { supabase } from '@/lib/supabase'
 import {
@@ -126,6 +128,14 @@ export function TransactionSheet({ open, onOpenChange, transaction }: Props) {
   // category to divide, and an installment period's amount is the plan's to
   // decide (D15) — `split_transaction_into_receipt` refuses both, and the
   // button does not offer them in the first place.
+  // ADR-0016: the period label is composed from the plan, not stored on the
+  // row, so it is shown as a fact about this transaction rather than as text
+  // in a field. Editing it here would mean editing one period's copy of a
+  // name eleven other periods also carry — which is the drift the derived
+  // label exists to make impossible.
+  const { data: planById } = useInstallmentLabels(householdId)
+  const periodLabel = transaction ? installmentPeriodLabel(transaction, planById) : null
+
   const canSplit =
     transaction != null &&
     transaction.kind !== 'transfer' &&
@@ -521,6 +531,21 @@ export function TransactionSheet({ open, onOpenChange, transaction }: Props) {
             </div>
           )}
         </div>
+
+        {/* Read-only on purpose: this row states which period of which plan
+            the charge is, and both halves belong to the plan. It sits above
+            Note so the field below is unambiguously the user's own. */}
+        {periodLabel && (
+          <div className="rounded-lg border bg-muted/40 p-3">
+            <div className="flex items-center gap-2 text-sm font-medium">
+              <CalendarSync className="size-4 shrink-0 text-muted-foreground" />
+              <span>{periodLabel}</span>
+            </div>
+            <p className="mt-1 text-xs text-muted-foreground">
+              From the installment plan. Rename it there and every period follows.
+            </p>
+          </div>
+        )}
 
         <div className="space-y-1.5">
           <Label htmlFor="txn-note">Note</Label>

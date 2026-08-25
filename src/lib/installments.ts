@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { parsePeriodSourceKey, periodSourceKey, renameInstallmentPeriods } from './installmentMaterialiser'
+import { parsePeriodSourceKey, periodSourceKey } from './installmentMaterialiser'
 import { supabase } from './supabase'
+import type { LabelledPlan } from './installmentLabel'
 import type { RatioSplit } from './transactionShares'
 
 export type InstallmentStatus = 'active' | 'done' | 'cancelled'
@@ -132,6 +133,46 @@ export function usePostedPeriods(householdId: string) {
   })
 }
 
+/**
+ * Plan names and period counts, for labelling posted periods (ADR-0016).
+ *
+ * Reads the **base table, not `v_installments`**, so soft-deleted plans are
+ * included. D15 leaves a plan's settled periods in the ledger when the plan
+ * itself is deleted; the view filters `deleted_at`, so labelling from it would
+ * blank the name on exactly those rows — history losing its description
+ * because the plan that explains it was tidied away.
+ */
+export type InstallmentLabelsData = Record<string, LabelledPlan>
+
+export function toPlanMap(data: InstallmentLabelsData): ReadonlyMap<string, LabelledPlan> {
+  return new Map(Object.entries(data))
+}
+
+export function useInstallmentLabels(householdId: string) {
+  return useQuery({
+    queryKey: ['installment_labels', householdId],
+    select: toPlanMap,
+    queryFn: async (): Promise<InstallmentLabelsData> => {
+      const { data, error } = await supabase
+        .from('installments')
+        .select('id, name, total_periods')
+        .eq('household_id', householdId)
+      if (error) throw error
+      const byId: InstallmentLabelsData = {}
+      for (const row of data ?? []) {
+        byId[row.id as string] = { name: row.name as string, total_periods: row.total_periods as number }
+      }
+      return byId
+    },
+    // Same trap as usePostedPeriods: a Map does not survive the JSON
+    // round-trip localStorage persistence puts query data through, so the
+    // queryFn returns a plain object and `select` rebuilds the Map per
+    // observer. initialData keeps callers off `undefined` while it loads.
+    initialData: {},
+    initialDataUpdatedAt: 0,
+  })
+}
+
 export type InstallmentInput = Omit<Installment, 'id' | 'household_id'>
 
 export function useCreateInstallment(householdId: string) {
@@ -141,19 +182,21 @@ export function useCreateInstallment(householdId: string) {
       const { error } = await supabase.from('installments').insert({ household_id: householdId, ...input })
       if (error) throw error
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['installments', householdId] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['installments', householdId] })
+      queryClient.invalidateQueries({ queryKey: ['installment_labels', householdId] })
+    },
   })
 }
 
 /**
- * Saves an edit to the plan row — and brings the notes on the periods it has
- * already posted back in line with it (D15 as amended in v4.3).
+ * Saves an edit to the plan row. Nothing else moves.
  *
- * The resync runs on **every** save, not only when the name field changed:
- * `periodsToRename` recognises a generated label by its shape rather than by
- * the name it was posted under, so opening a plan whose periods drifted out of
- * sync — renamed before this existed, say — and pressing Save is what repairs
- * it. Rows already correct produce no write.
+ * D15 is whole again (ADR-0016): a period's label is derived from this row at
+ * render time, so renaming a plan is visible everywhere on the next render
+ * with no transaction rewritten. The short-lived propagation this hook used to
+ * do — and the pattern-matching guard it needed — are gone with the stored
+ * label that made them necessary.
  */
 export function useUpdateInstallment(householdId: string) {
   const queryClient = useQueryClient()
@@ -161,28 +204,12 @@ export function useUpdateInstallment(householdId: string) {
     mutationFn: async ({ id, input }: { id: string; input: Partial<InstallmentInput> }) => {
       const { error } = await supabase.from('installments').update(input).eq('id', id)
       if (error) throw error
-
-      // Both halves of the label have to be known to write one; the edit sheet
-      // always sends a whole plan, so this only skips a caller that patches a
-      // single field.
-      if (input.name == null || input.total_periods == null) return
-      try {
-        await renameInstallmentPeriods(householdId, id, {
-          name: input.name,
-          totalPeriods: input.total_periods,
-        })
-      } catch (renameError) {
-        // The plan is saved; only its posted labels are stale. Failing the
-        // whole mutation here would tell the user an edit that did land had
-        // not, which is the worse of the two wrong answers.
-        console.error('Could not rename posted installment periods', renameError)
-      }
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['installments', householdId] })
-      // Unconditional: a rename rewrites rows the ledger is already showing,
-      // and a plan edit is rare enough that one extra refetch costs nothing.
-      queryClient.invalidateQueries({ queryKey: ['transactions', householdId] })
+      // The ledger quotes plan names it does not store, so a renamed plan has
+      // to re-render the rows that borrow it.
+      queryClient.invalidateQueries({ queryKey: ['installment_labels', householdId] })
     },
   })
 }
@@ -197,7 +224,10 @@ export function useDeleteInstallment(householdId: string) {
         .eq('id', id)
       if (error) throw error
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['installments', householdId] }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['installments', householdId] })
+      queryClient.invalidateQueries({ queryKey: ['installment_labels', householdId] })
+    },
   })
 }
 

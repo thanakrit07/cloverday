@@ -16,7 +16,8 @@ import { formatBaht } from '@/lib/format'
 import { ALL_TIME, dayOfMonthLabel, fullDateLabel, monthRange, weekdayLabel } from '@/lib/month'
 import { supabase } from '@/lib/supabase'
 import { parsePeriodSourceKey } from '@/lib/installmentMaterialiser'
-import { useInstallmentPayments, useSetPeriodPaid } from '@/lib/installments'
+import { installmentPeriodLabel } from '@/lib/installmentLabel'
+import { useInstallmentLabels, useInstallmentPayments, useSetPeriodPaid } from '@/lib/installments'
 import { useTransactionShares } from '@/lib/transactionShares'
 import { entryAmount, groupByReceipt, type LedgerEntry } from '@/lib/receiptGrouping'
 import { useDeleteReceipt, useReceipts, useRestoreReceipt } from '@/lib/receipts'
@@ -95,6 +96,12 @@ export function TransactionsScreen({
     return parsePeriodSourceKey(t.source_key)
   }
 
+  // ADR-0016: a period's label is composed here, never read out of `note`.
+  // Renaming a plan therefore changes every row that quotes it on the next
+  // render, with nothing written and nothing left to drift.
+  const { data: planById } = useInstallmentLabels(householdId)
+  const periodLabelOf = (t: Transaction) => installmentPeriodLabel(t, planById)
+
   const { data: receipts } = useReceipts(householdId)
   const receiptById = useMemo(() => new Map((receipts ?? []).map((r) => [r.id, r])), [receipts])
   const removeReceipt = useDeleteReceipt(householdId)
@@ -158,7 +165,9 @@ export function TransactionsScreen({
     if (!search.trim()) return true
     const q = search.trim().toLowerCase()
     const category = t.category_id ? categoryById.get(t.category_id) : null
-    const haystack = [t.note, t.description, category?.name, instrumentName?.[`account:${t.from_account_id}`], instrumentName?.[`card:${t.from_card_id}`]]
+    // The period label is derived, so searching a plan's name has to look at
+    // the composed string — the ledger shows it, and `note` no longer holds it.
+    const haystack = [periodLabelOf(t), t.note, t.description, category?.name, instrumentName?.[`account:${t.from_account_id}`], instrumentName?.[`card:${t.from_card_id}`]]
       .filter(Boolean)
       .join(' ')
       .toLowerCase()
@@ -208,12 +217,17 @@ export function TransactionsScreen({
                   const category = t.category_id ? categoryById.get(t.category_id) : null
                   const owner = t.owner_id ? memberById.get(t.owner_id) : null
                   const catPath = category ? categoryPath(category, categories ?? []) : null
+                  // A period leads with its plan, not with whatever the user
+                  // typed: the plan is what the charge *is*, and the note is a
+                  // remark about it. When both exist the note joins the
+                  // details line rather than displacing the label.
+                  const periodLabel = periodLabelOf(t)
                   const title =
                     t.kind === 'transfer'
                       ? `${instrumentLabel(t, 'from')} → ${instrumentLabel(t, 'to')}`
-                      : t.note || catPath || t.kind
+                      : periodLabel || t.note || catPath || t.kind
                   // Category only repeats below when it isn't already the title.
-                  const details = [catPath === title ? null : catPath, instrumentLabel(t, 'from'), owner?.display_name]
+                  const details = [periodLabel && t.note ? t.note : null, catPath === title ? null : catPath, instrumentLabel(t, 'from'), owner?.display_name]
                     .filter(Boolean)
                     .join(' · ')
                   // A row with an explicit Split (D13) previously looked
@@ -323,7 +337,10 @@ export function TransactionsScreen({
                               disabled={setPeriodPaid.isPending}
                               role="checkbox"
                               aria-checked={periodPaid}
-                              aria-label={`Mark period ${period.periodNo} of ${title} paid`}
+                              // The plan's own name, not `title`: the title now carries the
+                              // period number itself, so reading it here announces
+                              // "period 4 of Notebook (งวดที่ 4/10)".
+                              aria-label={`Mark period ${period.periodNo} of ${planById.get(period.installmentId)?.name ?? 'this plan'} paid`}
                               className="shrink-0 px-3 py-1.5"
                             >
                               <span
