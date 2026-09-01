@@ -10,6 +10,7 @@
 // `supabase secrets set ANTHROPIC_API_KEY=...`.
 
 import Anthropic from 'npm:@anthropic-ai/sdk@^0.70.0'
+import { createClient } from 'npm:@supabase/supabase-js@^2'
 
 // Extraction, not reasoning -- and the accuracy question is empirical, so this
 // starts at the cheapest capable tier and moves up only if Thai slips read
@@ -107,6 +108,24 @@ interface RequestBody {
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: CORS })
   if (req.method !== 'POST') return json({ error: 'Use POST' }, 405)
+
+  // `verify_jwt` is not the gate it sounds like: it accepts the project's
+  // publishable key, which ships inside the client bundle by design and is
+  // therefore public. Without this check anyone who reads the bundle can spend
+  // the household's Anthropic credit -- the only endpoint in this project
+  // where a request costs real money, and the only one that needs to know a
+  // *person* is behind it rather than merely a valid project key.
+  const authorization = req.headers.get('Authorization')
+  if (!authorization) return json({ error: 'Sign in to scan a receipt.' }, 401)
+  const auth = createClient(
+    Deno.env.get('SUPABASE_URL') ?? '',
+    Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+    { global: { headers: { Authorization: authorization } } },
+  )
+  const { data: caller } = await auth.auth.getUser()
+  // A publishable key reaches here and resolves to no user, which is exactly
+  // the case being refused.
+  if (!caller?.user) return json({ error: 'Sign in to scan a receipt.' }, 401)
 
   const apiKey = Deno.env.get('ANTHROPIC_API_KEY')
   if (!apiKey) return json({ error: 'Bill scanning is not configured on this project.' }, 500)
