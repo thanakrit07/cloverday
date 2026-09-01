@@ -17,6 +17,7 @@ import { ALL_TIME, dayOfMonthLabel, fullDateLabel, monthRange, weekdayLabel } fr
 import { supabase } from '@/lib/supabase'
 import { parsePeriodSourceKey } from '@/lib/installmentMaterialiser'
 import { installmentPeriodLabel } from '@/lib/installmentLabel'
+import { ReceiptSheet } from './ReceiptSheet'
 import { useInstallmentLabels, useInstallmentPayments, useSetPeriodPaid } from '@/lib/installments'
 import { useTransactionShares } from '@/lib/transactionShares'
 import { entryAmount, groupByReceipt, type LedgerEntry } from '@/lib/receiptGrouping'
@@ -107,6 +108,8 @@ export function TransactionsScreen({
   const removeReceipt = useDeleteReceipt(householdId)
   const restoreReceipt = useRestoreReceipt(householdId)
   const [expandedReceipts, setExpandedReceipts] = useState<Set<string>>(() => new Set())
+  // The receipt open as a whole, as opposed to one merely expanded in place.
+  const [editingReceipt, setEditingReceipt] = useState<Extract<LedgerEntry, { type: 'receipt' }> | null>(null)
   const [confirmingReceiptDelete, setConfirmingReceiptDelete] = useState<Extract<LedgerEntry, { type: 'receipt' }> | null>(null)
 
   // All of a receipt's lines or none of them (ADR-0015). The refusal comes
@@ -391,9 +394,12 @@ export function TransactionsScreen({
       <li key={entry.receiptId} className="border-t">
         <SwipeableRow onDelete={() => setConfirmingReceiptDelete(entry)}>
           <div className="flex items-center">
+            {/* Two targets on one row, the pattern the Categories screen
+                already uses (DESIGN §7): the name opens the receipt, the
+                chevron peeks at it without leaving the ledger. Peeking and
+                editing are different jobs and deserve different taps. */}
             <button
-              onClick={() => toggleReceipt(entry.receiptId)}
-              aria-expanded={isOpen}
+              onClick={() => setEditingReceipt(entry)}
               className="flex min-w-0 flex-1 items-center gap-2.5 py-1.5 pl-3 text-left transition-colors active:bg-accent/60"
             >
               {/* A Receipt has no Category, so it cannot show a category icon.
@@ -417,11 +423,17 @@ export function TransactionsScreen({
                   <span className="block text-[11px] tabular-nums text-muted-foreground">yours {formatBaht(mine)}</span>
                 )}
               </span>
+            </button>
+            <button
+              onClick={() => toggleReceipt(entry.receiptId)}
+              aria-expanded={isOpen}
+              aria-label={isOpen ? 'Collapse receipt' : 'Expand receipt'}
+              className="flex shrink-0 items-center px-2 py-1.5 transition-colors active:bg-accent/60"
+            >
               <ChevronRight
-                className={cn('ml-1.5 size-4 shrink-0 text-muted-foreground transition-transform', isOpen && 'rotate-90')}
+                className={cn('size-4 shrink-0 text-muted-foreground transition-transform', isOpen && 'rotate-90')}
               />
             </button>
-            <span className="w-3 shrink-0" />
           </div>
         </SwipeableRow>
         {isOpen && <ul>{entry.lines.map((line) => renderRow(line, true))}</ul>}
@@ -510,6 +522,18 @@ export function TransactionsScreen({
       </div>
 
       {editing && <TransactionSheet open onOpenChange={(open) => !open && setEditing(null)} transaction={editing} />}
+      {editingReceipt && (
+        <ReceiptSheet
+          draft={{
+            kind: 'edit',
+            receiptId: editingReceipt.receiptId,
+            label: receiptById.get(editingReceipt.receiptId)?.label ?? 'Receipt',
+            lines: editingReceipt.lines,
+          }}
+          onClose={() => setEditingReceipt(null)}
+        />
+      )}
+
       {confirmingReceiptDelete && (
         <ConfirmDialog
           title="Delete this receipt?"

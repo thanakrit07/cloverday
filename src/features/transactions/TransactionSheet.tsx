@@ -10,7 +10,7 @@ import { AmountField } from '@/components/AmountField'
 import { CategoryIcon } from '@/lib/categoryIcons'
 import { CategoryPickerPanel } from '@/components/CategoryPickerPanel'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
-import { SplitReceiptDialog } from './SplitReceiptDialog'
+import { ReceiptSheet } from './ReceiptSheet'
 import { DatePickerPanel } from '@/components/DatePickerPanel'
 import { EntryPage } from '@/components/EntryPage'
 import { EntryRow } from '@/components/EntryRow'
@@ -67,11 +67,9 @@ interface Props {
    * *record* a payment rather than describe one.
    */
   scan?: BillScan | null
-  /** The row this form just wrote, so a scan can go on to split it. */
-  onCreated?: (transactionId: string) => void
 }
 
-export function TransactionSheet({ open, onOpenChange, transaction, scan, onCreated }: Props) {
+export function TransactionSheet({ open, onOpenChange, transaction, scan }: Props) {
   const { householdId, self, members } = useHousehold()
   const { data: categories } = useCategories(householdId)
   const { data: usage } = useCategoryUsage(householdId)
@@ -312,8 +310,6 @@ export function TransactionSheet({ open, onOpenChange, transaction, scan, onCrea
       const id = await create.mutateAsync(input)
       await syncTransactionShares({ ...shareParams, transactionId: id })
       invalidateShareQueries(queryClient, householdId)
-      // Before resetForNextEntry(), which clears the form this id came from.
-      onCreated?.(id)
       resetForNextEntry()
       if (keepOpen) {
         // Rapid entry: stay on the form, with the amount keypad already
@@ -674,8 +670,8 @@ export function TransactionSheet({ open, onOpenChange, transaction, scan, onCrea
         />
       )}
       {splitting && transaction && (
-        <SplitReceiptDialog
-          transaction={transaction}
+        <ReceiptSheet
+          draft={{ kind: 'split', transaction }}
           onClose={() => {
             setSplitting(false)
             onOpenChange(false)

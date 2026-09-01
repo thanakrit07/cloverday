@@ -2,13 +2,11 @@ import { useEffect, useState } from 'react'
 import { Loader2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Dialog, DialogContent, DialogTitle } from '@/components/ui/dialog'
-import { SplitReceiptDialog } from './SplitReceiptDialog'
+import { ReceiptSheet } from './ReceiptSheet'
 import { TransactionSheet } from './TransactionSheet'
 import { categoryPath, useCategories } from '@/lib/categories'
 import { useHousehold } from '@/lib/HouseholdContext'
 import { scanBill, type BillScan } from '@/lib/scanBill'
-import { supabase } from '@/lib/supabase'
-import type { Transaction } from '@/lib/transactions'
 
 interface Props {
   file: File
@@ -16,18 +14,21 @@ interface Props {
 }
 
 /**
- * Photograph → the ordinary entry form → the ordinary split form (ADR-0017).
+ * Photograph → the receipt itself (ADR-0018).
  *
- * There is no third path here: the scan fills in the two screens the household
- * already uses and then gets out of the way. That is why splitting stays an
- * edit (ADR-0015) and why this feature needed no migration — every row it
- * produces is written by code that predates it.
+ * The first version routed a scan through the ordinary entry form and then on
+ * to a split dialog, which cost two screens for one payment and gave the
+ * household no sign on the first that a second was coming. Worse, the hand-off
+ * could not work: the entry form closed itself in the same tick it announced
+ * the new row, unmounting this component while the split it had just asked for
+ * was still being fetched, so the split screen never appeared at all.
+ *
+ * Landing straight on the receipt removes the hand-off rather than fixing it.
  */
 export function ScanBillFlow({ file, onDone }: Props) {
   const { householdId } = useHousehold()
   const { data: categories } = useCategories(householdId)
   const [scan, setScan] = useState<BillScan | null>(null)
-  const [splitting, setSplitting] = useState<Transaction | null>(null)
 
   useEffect(() => {
     let cancelled = false
@@ -49,49 +50,11 @@ export function ScanBillFlow({ file, onDone }: Props) {
     return () => {
       cancelled = true
     }
-    // Runs once per photo. `categories` is read at call time rather than
-    // depended on, so a background refetch cannot re-scan the same image and
-    // bill for it twice.
+    // Once per photo. `categories` is read at call time rather than depended
+    // on, so a background refetch cannot re-scan the same image and bill for
+    // it twice.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [file])
-
-  /**
-   * The row the form just wrote, fetched by id rather than read out of the
-   * transactions cache: that cache is month-scoped and may not hold this row
-   * yet, and the split dialog needs the real amount the database stored.
-   */
-  async function openSplit(transactionId: string) {
-    if (!scan?.lines) {
-      onDone()
-      return
-    }
-    const { data, error } = await supabase
-      .from('v_transactions')
-      .select(
-        'id, household_id, date, kind, category_id, category_kind, description, amount, owner_id, from_account_id, from_card_id, to_account_id, to_card_id, note, confirmed, source, source_key, receipt_id',
-      )
-      .eq('id', transactionId)
-      .single()
-    if (error || !data) {
-      // The transaction is saved; only the split step is lost. Saying so beats
-      // a silent close, because the household would otherwise assume the
-      // categories they saw on screen had been recorded.
-      toast.error('Saved, but could not open the split — split it from the ledger.')
-      onDone()
-      return
-    }
-    setSplitting(data as Transaction)
-  }
-
-  if (splitting) {
-    return (
-      <SplitReceiptDialog
-        transaction={splitting}
-        prefill={scan?.lines ? { label: scan.merchant, lines: scan.lines } : null}
-        onClose={onDone}
-      />
-    )
-  }
 
   if (!scan) {
     return (
@@ -112,12 +75,16 @@ export function ScanBillFlow({ file, onDone }: Props) {
     )
   }
 
+  // One category is not a receipt, it is a payment that happened to be
+  // photographed — so it goes to the ordinary form, which is what it is.
+  if (!scan.lines) {
+    return <TransactionSheet open onOpenChange={(open) => !open && onDone()} scan={scan} />
+  }
+
   return (
-    <TransactionSheet
-      open
-      onOpenChange={(open) => !open && onDone()}
-      scan={scan}
-      onCreated={openSplit}
+    <ReceiptSheet
+      draft={{ kind: 'scan', scan: { ...scan, lines: scan.lines } }}
+      onClose={onDone}
     />
   )
 }
