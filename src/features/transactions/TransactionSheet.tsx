@@ -151,6 +151,19 @@ export function TransactionSheet({ open, onOpenChange, transaction, scan, onCrea
   const { data: planById } = useInstallmentLabels(householdId)
   const periodLabel = transaction ? installmentPeriodLabel(transaction, planById) : null
 
+  // The scan's proposal, resolved to names the household would recognise —
+  // shown here only; the split form re-reads the scan itself.
+  const scanLines = scan?.lines?.map((line) => {
+    const category = line.categoryId ? categories?.find((c) => c.id === line.categoryId) : null
+    return {
+      // A line the model could not place says so, rather than rendering blank
+      // — the household is about to be asked to fill it in.
+      name: category ? categoryPath(category, categories ?? []) : 'Needs a category',
+      // The remainder line's amount is derived by the split form, not typed.
+      amount: line.amount === '' ? 'the rest' : line.amount,
+    }
+  })
+
   const canSplit =
     transaction != null &&
     transaction.kind !== 'transfer' &&
@@ -418,6 +431,39 @@ export function TransactionSheet({ open, onOpenChange, transaction, scan, onCrea
           )
         }
       >
+        {/* A scan lands on a form that is otherwise identical to a manual
+            entry, so without this the household cannot tell whether the
+            categories were read or lost — and has to press Save to find out.
+            The split form is a screen away; this says so, and shows what is
+            waiting on it. */}
+        {scan && (
+          <div className="rounded-lg border bg-muted/40 p-3 text-xs">
+            {scanLines ? (
+              <>
+                <p className="font-medium text-foreground">
+                  {scanLines.length} categories read from the photo
+                </p>
+                <ul className="mt-1.5 space-y-0.5 text-muted-foreground">
+                  {scanLines.map((line, i) => (
+                    <li key={i} className="flex justify-between gap-2">
+                      <span className="truncate">{line.name}</span>
+                      <span className="shrink-0 tabular-nums">{line.amount}</span>
+                    </li>
+                  ))}
+                </ul>
+                <p className="mt-2 text-muted-foreground">
+                  Save this payment and the split opens next, filled in — nothing is
+                  recorded per category until you confirm it there.
+                </p>
+              </>
+            ) : (
+              <p className="text-muted-foreground">
+                Only one category was found on the photo, so this saves as an ordinary
+                transaction rather than a receipt.
+              </p>
+            )}
+          </div>
+        )}
         <AmountField
           size="lg"
           expr={amountField.expr}
