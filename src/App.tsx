@@ -9,6 +9,7 @@ import { AuthScreen } from './components/AuthScreen'
 import { HouseholdSetup } from './components/HouseholdSetup'
 import { ResetPasswordScreen } from './components/ResetPasswordScreen'
 import { TransactionsScreen } from '@/features/transactions/TransactionsScreen'
+import { ScanBillFlow } from '@/features/transactions/ScanBillFlow'
 import { TransactionSheet } from '@/features/transactions/TransactionSheet'
 import { RecordsSummary } from '@/features/transactions/RecordsSummary'
 import { AccountDetailsScreen } from '@/features/accounts/AccountDetailsScreen'
@@ -48,6 +49,9 @@ function SignedInApp({ self }: { self: HouseholdMember }) {
   // Reset to today whenever a (possibly different) card is opened.
   const [cardAnchor, setCardAnchor] = useState(todayIso())
   const [quickAddOpen, setQuickAddOpen] = useState(false)
+  // ADR-0017. The file is the flow's identity: setting a new one restarts it,
+  // clearing it ends it, and nothing else about a scan lives out here.
+  const [scannedBill, setScannedBill] = useState<File | null>(null)
   const [settingsOpen, setSettingsOpen] = useState(false)
   const [viewingAccountId, setViewingAccountId] = useState<string | null>(null)
   const [viewingCardId, setViewingCardId] = useState<string | null>(null)
@@ -99,6 +103,7 @@ function SignedInApp({ self }: { self: HouseholdMember }) {
         tab={resolvedTab}
         onTabChange={(t) => setTab(t)}
         onQuickAdd={() => setQuickAddOpen(true)}
+        onScanBill={setScannedBill}
         onOpenSettings={() => setSettingsOpen(true)}
         search={search}
         onSearchChange={setSearch}
@@ -140,6 +145,7 @@ function SignedInApp({ self }: { self: HouseholdMember }) {
         </ErrorBoundary>
       </AppShell>
       <TransactionSheet open={quickAddOpen} onOpenChange={setQuickAddOpen} />
+      {scannedBill && <ScanBillFlow file={scannedBill} onDone={() => setScannedBill(null)} />}
       {settingsOpen && (
         <FullScreenPage title="Settings" onClose={() => setSettingsOpen(false)}>
           <SettingsScreen />

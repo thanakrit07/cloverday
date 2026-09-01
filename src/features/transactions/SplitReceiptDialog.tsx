@@ -12,14 +12,22 @@ import { useHousehold } from '@/lib/HouseholdContext'
 import { useSplitIntoReceipt, type ReceiptLineInput } from '@/lib/receipts'
 import { inheritedSplitFor } from '@/lib/receiptSplit'
 import { useTransactionShares } from '@/lib/transactionShares'
+import type { DraftLine } from '@/lib/scanBill'
 import type { Transaction } from '@/lib/transactions'
 
 interface Props {
   transaction: Transaction
   onClose: () => void
+  /**
+   * Lines a bill scan proposed (ADR-0017), in this component's own shape —
+   * index 0 is the remainder line and carries no amount. Every value here is
+   * a suggestion the household edits or overrides before Save; the dialog
+   * treats them exactly as if they had been typed.
+   */
+  prefill?: { label: string; lines: DraftLine[] } | null
 }
 
-interface DraftLine {
+interface Line {
   key: string
   categoryId: string | null
   /** Free text while typing; parsed only on save. Blank means nothing yet. */
@@ -28,7 +36,7 @@ interface DraftLine {
 }
 
 let nextKey = 0
-const newLine = (categoryId: string | null = null): DraftLine => ({
+const newLine = (categoryId: string | null = null): Line => ({
   key: `line-${nextKey++}`,
   categoryId,
   amount: '',
@@ -47,7 +55,7 @@ const newLine = (categoryId: string | null = null): DraftLine => ({
  * lines always add up, so `split_transaction_into_receipt`'s sum check can
  * never be what tells the user they got it wrong.
  */
-export function SplitReceiptDialog({ transaction, onClose }: Props) {
+export function SplitReceiptDialog({ transaction, onClose, prefill }: Props) {
   const { householdId } = useHousehold()
   const { data: categories } = useCategories(householdId)
   const { data: shares } = useTransactionShares(householdId)
@@ -55,12 +63,13 @@ export function SplitReceiptDialog({ transaction, onClose }: Props) {
 
   const originalCategory = categories?.find((c) => c.id === transaction.category_id) ?? null
   const [label, setLabel] = useState(
-    () => transaction.note || transaction.description || originalCategory?.name || '',
+    () => prefill?.label || transaction.note || transaction.description || originalCategory?.name || '',
   )
-  const [lines, setLines] = useState<DraftLine[]>(() => [
-    newLine(transaction.category_id),
-    newLine(null),
-  ])
+  const [lines, setLines] = useState<Line[]>(() =>
+    prefill?.lines?.length
+      ? prefill.lines.map((l) => ({ ...newLine(l.categoryId), amount: l.amount, description: l.description }))
+      : [newLine(transaction.category_id), newLine(null)],
+  )
 
   const options = useMemo(() => {
     const all = categories ?? []
@@ -75,7 +84,7 @@ export function SplitReceiptDialog({ transaction, onClose }: Props) {
     .reduce((sum, l) => sum + (Number.parseFloat(l.amount) || 0), 0)
   const remainder = Math.round((transaction.amount - itemised) * 100) / 100
 
-  const update = (key: string, patch: Partial<DraftLine>) =>
+  const update = (key: string, patch: Partial<Line>) =>
     setLines((prev) => prev.map((l) => (l.key === key ? { ...l, ...patch } : l)))
 
   const problem =

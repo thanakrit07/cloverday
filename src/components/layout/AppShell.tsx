@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react'
-import { ChevronLeft, ChevronRight, CloudOff, Plus, Search, Settings as SettingsIcon, X } from 'lucide-react'
+import { Camera, ChevronLeft, ChevronRight, CloudOff, Plus, Search, Settings as SettingsIcon, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { MonthYearPicker } from '@/components/MonthYearPicker'
@@ -23,6 +23,8 @@ interface Props {
   tab: Tab
   onTabChange: (tab: Tab) => void
   onQuickAdd: () => void
+  /** A photographed bill (ADR-0017). Undefined disables the camera button. */
+  onScanBill?: (file: File) => void
   onOpenSettings: () => void
   search: string
   onSearchChange: (search: string) => void
@@ -44,6 +46,7 @@ export function AppShell({
   tab,
   onTabChange,
   onQuickAdd,
+  onScanBill,
   onOpenSettings,
   search,
   onSearchChange,
@@ -257,6 +260,33 @@ export function AppShell({
       {/* 9rem clears the FAB, which spans 5rem–8.5rem above the safe area:
           with less, the last line of a screen's content sits under it. */}
       <main className="flex-1 overflow-y-auto pb-[calc(env(safe-area-inset-bottom)+9rem)]">{children}</main>
+
+      {/* Sits above the FAB rather than beside it: the FAB's position is the
+          one control every screen shares, and moving it to make room would
+          cost more than the second button gains. Smaller and unfilled, so it
+          reads as the specialised way in, not a rival to it. */}
+      {onScanBill && (
+        <label
+          className="fixed bottom-[calc(env(safe-area-inset-bottom)+9.25rem)] right-[1.375rem] z-20 flex size-11 cursor-pointer items-center justify-center rounded-full border bg-background text-foreground shadow-md transition-transform active:scale-95"
+          aria-label="Scan a receipt"
+        >
+          <Camera className="size-5" />
+          <input
+            type="file"
+            accept="image/*"
+            // Opens the camera directly on a phone, the gallery on desktop.
+            capture="environment"
+            className="sr-only"
+            onChange={(e) => {
+              const file = e.target.files?.[0]
+              // Cleared so photographing the same slip twice still fires a
+              // change event the second time.
+              e.target.value = ''
+              if (file) onScanBill(file)
+            }}
+          />
+        </label>
+      )}
 
       <Button
         onClick={onQuickAdd}

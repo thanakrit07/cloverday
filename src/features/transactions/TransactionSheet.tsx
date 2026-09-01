@@ -26,6 +26,7 @@ import type { EntryPrefill } from '@/lib/entryPrefill'
 import { useAccounts } from '@/lib/accounts'
 import { useCards } from '@/lib/cards'
 import { useHousehold } from '@/lib/HouseholdContext'
+import type { BillScan } from '@/lib/scanBill'
 import { installmentPeriodLabel } from '@/lib/installmentLabel'
 import { useInstallmentLabels } from '@/lib/installments'
 import { toBuddhistYear } from '@/lib/month'
@@ -59,9 +60,18 @@ interface Props {
   open: boolean
   onOpenChange: (open: boolean) => void
   transaction?: Transaction
+  /**
+   * A bill scan's reading of the slip (ADR-0017), filling the fields it can
+   * see. It cannot see which card paid — no slip says — so that row is left
+   * for the household, which is also what stops this from being a way to
+   * *record* a payment rather than describe one.
+   */
+  scan?: BillScan | null
+  /** The row this form just wrote, so a scan can go on to split it. */
+  onCreated?: (transactionId: string) => void
 }
 
-export function TransactionSheet({ open, onOpenChange, transaction }: Props) {
+export function TransactionSheet({ open, onOpenChange, transaction, scan, onCreated }: Props) {
   const { householdId, self, members } = useHousehold()
   const { data: categories } = useCategories(householdId)
   const { data: usage } = useCategoryUsage(householdId)
@@ -78,7 +88,9 @@ export function TransactionSheet({ open, onOpenChange, transaction }: Props) {
   const panel = useEntryPanel<PanelKey>(transaction ? null : 'amount')
 
   const [kind, setKind] = useState<TransactionKind>(transaction?.kind ?? 'expense')
-  const amountField = useAmountEntry(transaction ? String(transaction.amount) : '')
+  const amountField = useAmountEntry(
+    transaction ? String(transaction.amount) : scan ? String(scan.total) : '',
+  )
   const [categoryId, setCategoryId] = useState<string | null>(transaction?.category_id ?? null)
   const [from, setFrom] = useState<Instrument>({
     accountId: transaction?.from_account_id ?? null,
@@ -88,9 +100,12 @@ export function TransactionSheet({ open, onOpenChange, transaction }: Props) {
     accountId: transaction?.to_account_id ?? null,
     cardId: transaction?.to_card_id ?? null,
   })
-  const [date, setDate] = useState(transaction?.date ?? today())
+  // A scanned date only when the slip actually showed one — `toIsoDate`
+  // returns null rather than inventing today's, and today's is the better
+  // fallback anyway (you photograph the slip when you get home).
+  const [date, setDate] = useState(transaction?.date ?? scan?.date ?? today())
   const [description, setDescription] = useState(transaction?.description ?? '')
-  const [note, setNote] = useState(transaction?.note ?? '')
+  const [note, setNote] = useState(transaction?.note ?? scan?.merchant ?? '')
 
   // D13/D14: Who bears replaces Owner. Defaults to "Just you"; when editing
   // a transaction that already has a Split, it's loaded once its shares
@@ -284,6 +299,8 @@ export function TransactionSheet({ open, onOpenChange, transaction }: Props) {
       const id = await create.mutateAsync(input)
       await syncTransactionShares({ ...shareParams, transactionId: id })
       invalidateShareQueries(queryClient, householdId)
+      // Before resetForNextEntry(), which clears the form this id came from.
+      onCreated?.(id)
       resetForNextEntry()
       if (keepOpen) {
         // Rapid entry: stay on the form, with the amount keypad already
