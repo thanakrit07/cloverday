@@ -162,11 +162,19 @@ export function TransactionSheet({ open, onOpenChange, transaction, scan }: Prop
     }
   })
 
+  // Available while recording, not only while editing (ADR-0018). Reaching a
+  // receipt used to mean saving a payment under one heading you already knew
+  // was wrong, then reopening it to correct that — so the household had to
+  // record something false on the way to recording something true.
+  //
+  // No new control: this is the button that was already here, ungated. The
+  // form's rows are untouched, which is what keeps D9's tap budget out of it.
   const canSplit =
-    transaction != null &&
-    transaction.kind !== 'transfer' &&
-    transaction.source !== 'installment' &&
-    transaction.receipt_id == null
+    transaction == null
+      ? kind !== 'transfer'
+      : transaction.kind !== 'transfer' &&
+        transaction.source !== 'installment' &&
+        transaction.receipt_id == null
   // How many rows this run of "Save & add" has written. The quick-add sheet
   // is mounted for the life of the app with `open` toggling (App.tsx), not
   // remounted per use, so this has to be cleared by hand — otherwise the
@@ -641,7 +649,9 @@ export function TransactionSheet({ open, onOpenChange, transaction, scan }: Prop
             >
               <ReceiptText className="size-4 shrink-0 text-muted-foreground" />
               <span className="min-w-0 flex-1">
-                <span className="block text-sm">Split into a receipt</span>
+                <span className="block text-sm">
+                  {transaction ? 'Split into a receipt' : 'Create a receipt'}
+                </span>
                 <span className="block text-[11px] text-muted-foreground">One payment, more than one category</span>
               </span>
             </button>
@@ -671,7 +681,23 @@ export function TransactionSheet({ open, onOpenChange, transaction, scan }: Prop
       )}
       {splitting && transaction && (
         <ReceiptSheet
-          draft={{ kind: 'split', transaction }}
+          draft={
+            transaction
+              ? { kind: 'split', transaction }
+              : {
+                  kind: 'new',
+                  // Whatever was typed so far comes along; nothing has to be
+                  // entered twice, and nothing has been written yet.
+                  payment: {
+                    amount: amountField.value,
+                    date,
+                    instrument: from,
+                    categoryId,
+                    kind,
+                    label: note || description,
+                  },
+                }
+          }
           onClose={() => {
             setSplitting(false)
             onOpenChange(false)

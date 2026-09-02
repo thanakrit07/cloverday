@@ -28,6 +28,7 @@ import {
   useCreateTransaction,
   type Transaction,
   type TransactionInput,
+  type TransactionKind,
 } from '@/lib/transactions'
 import {
   invalidateShareQueries,
@@ -54,8 +55,19 @@ import { useQueryClient } from '@tanstack/react-query'
  */
 export type ReceiptDraft =
   | { kind: 'scan'; scan: { merchant: string; date: string | null; total: number; lines: DraftLine[] } }
+  | { kind: 'new'; payment: NewPayment }
   | { kind: 'split'; transaction: Transaction }
   | { kind: 'edit'; receiptId: string; label: string; lines: Transaction[] }
+
+/** What the entry form had typed when it handed over (ADR-0018). */
+export interface NewPayment {
+  amount: number
+  date: string
+  instrument: Instrument
+  categoryId: string | null
+  kind: TransactionKind
+  label: string
+}
 
 interface Props {
   draft: ReceiptDraft
@@ -106,24 +118,37 @@ export function ReceiptSheet({ draft, onClose }: Props) {
   // else a payment of a known size is being divided.
   const source: Transaction | null =
     draft.kind === 'split' ? draft.transaction : draft.kind === 'edit' ? (draft.lines[0] ?? null) : null
-  const kind = source?.kind ?? 'expense'
+  const kind = draft.kind === 'new' ? draft.payment.kind : (source?.kind ?? 'expense')
 
   const [label, setLabel] = useState(() =>
     draft.kind === 'scan'
       ? draft.scan.merchant
-      : draft.kind === 'edit'
-        ? draft.label
-        : draft.transaction.note || draft.transaction.description || '',
+      : draft.kind === 'new'
+        ? draft.payment.label
+        : draft.kind === 'edit'
+          ? draft.label
+          : draft.transaction.note || draft.transaction.description || '',
   )
   const [date, setDate] = useState(() =>
-    draft.kind === 'scan' ? (draft.scan.date ?? today()) : (source?.date ?? today()),
+    draft.kind === 'scan'
+      ? (draft.scan.date ?? today())
+      : draft.kind === 'new'
+        ? draft.payment.date
+        : (source?.date ?? today()),
   )
-  const [instrument, setInstrument] = useState<Instrument>(() => ({
-    accountId: source?.from_account_id ?? null,
-    cardId: source?.from_card_id ?? null,
-  }))
+  const [instrument, setInstrument] = useState<Instrument>(() =>
+    draft.kind === 'new'
+      ? draft.payment.instrument
+      : { accountId: source?.from_account_id ?? null, cardId: source?.from_card_id ?? null },
+  )
   const amountField = useAmountEntry(
-    draft.kind === 'scan' ? String(draft.scan.total) : draft.kind === 'split' ? String(draft.transaction.amount) : '',
+    draft.kind === 'scan'
+      ? String(draft.scan.total)
+      : draft.kind === 'new'
+        ? (draft.payment.amount > 0 ? String(draft.payment.amount) : '')
+        : draft.kind === 'split'
+          ? String(draft.transaction.amount)
+          : '',
   )
   const [whoBears, setWhoBears] = useState<WhoBearsValue>({ mode: 'you', custom: {} })
 
@@ -143,7 +168,11 @@ export function ReceiptSheet({ draft, onClose }: Props) {
         }),
       )
     }
-    return [newLine({ categoryId: draft.transaction.category_id }), newLine()]
+    // Two empty lines, the least a receipt can be. The category typed on the
+    // form seeds the first, since it is the one heading the household had
+    // already picked for the whole payment.
+    const seed = draft.kind === 'new' ? draft.payment.categoryId : draft.transaction.category_id
+    return [newLine({ categoryId: seed }), newLine()]
   })
 
   const options = useMemo(() => {
@@ -208,7 +237,7 @@ export function ReceiptSheet({ draft, onClose }: Props) {
     invalidateShareQueries(queryClient, householdId)
     queryClient.invalidateQueries({ queryKey: ['transactions', householdId] })
     queryClient.invalidateQueries({ queryKey: ['receipts', householdId] })
-    toast.success(editing ? 'Receipt updated' : 'Split into a receipt')
+    toast.success(editing ? 'Receipt updated' : draft.kind === 'split' ? 'Split into a receipt' : 'Receipt saved')
     onClose()
   }
 
@@ -347,7 +376,7 @@ export function ReceiptSheet({ draft, onClose }: Props) {
 
   return (
     <EntryPage
-      title={editing ? 'Receipt' : 'Split into a receipt'}
+      title={editing ? 'Receipt' : draft.kind === 'split' ? 'Split into a receipt' : 'New receipt'}
       onClose={onClose}
       panelOpen={panel.active !== null}
       footer={
