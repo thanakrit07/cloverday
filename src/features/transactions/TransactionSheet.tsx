@@ -679,7 +679,7 @@ export function TransactionSheet({ open, onOpenChange, transaction, scan }: Prop
           }}
         />
       )}
-      {splitting && transaction && (
+      {splitting && (
         <ReceiptSheet
           draft={
             transaction
