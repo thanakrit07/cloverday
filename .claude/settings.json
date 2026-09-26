@@ -1,7 +1,4 @@
 {
-  "enabledPlugins": {
-    "backend-development@claude-code-workflows": true
-  },
   "permissions": {
     "deny": [
       "Read(~/Downloads/*.pdf)",
