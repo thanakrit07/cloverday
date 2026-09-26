@@ -1,6 +1,6 @@
 ---
 name: statement-import
-description: "Use when the user wants to process masked bank/card statement text files in statements/staging/masked/ into a staged transactions CSV -- e.g. \"import statement ใหม่\", \"process masked statements\", \"อัปเดต staged.csv\", or after they've run scripts/pdf_statement_mask.py mask on new PDFs."
+description: "Use when the user wants to process masked bank/card statement text files in statements/staging/masked/ into a staged transactions CSV -- e.g. \"import statement ใหม่\", \"process masked statements\", \"อัปเดต staged.csv\", or after they've run `npm run statements:mask` on new PDFs. Step 2 of 3: this skill only stages the CSV -- the user imports it into the DB themselves with `npm run statements:import`."
 ---
 
 # Statement import (privacy-safe pipeline)
@@ -19,7 +19,7 @@ statements/raw/                    ← ห้ามแตะ (denyไว้แ�
   final/transactions.csv        ← ผลลัพธ์สุดท้ายหลัง unmask (ผู้ใช้รันเอง)
 
 statements/staging/               ← ใช้งานได้ปกติ ไม่มีข้อมูลจริง (มีแต่ placeholder ⟦Pn⟧)
-  masked/<name>.txt              ← input: มาจาก pdf_statement_mask.py mask
+  masked/<name>.txt              ← input: มาจาก npm run statements:mask
   staged/<name>.csv               ← per-file fragment ที่สกิลนี้สร้าง
   staged.csv                      ← merge ของทุก fragment (regenerate ทุกครั้ง)
   processed_log.json              ← {masked filename: {hash, rows, account}}
