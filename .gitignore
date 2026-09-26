@@ -27,5 +27,9 @@ dist-ssr
 .env*
 .playwright-mcp
 
-# Raw sheet exports for scripts/import-sheet.ts — real financial data, never committed
-/import-data
+# Raw sheet exports and statement PDFs — real financial data, never committed
+/statements/raw
+
+# Working files for scripts/pdf_statement_mask.py — masked (placeholder) text only,
+# not sensitive, but generated/working data, not source
+/statements/staging

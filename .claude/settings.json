@@ -4,12 +4,12 @@
   },
   "permissions": {
     "deny": [
-      "Read(//Users/thanakrit/Downloads/*.pdf)",
-      "Read(//Users/thanakrit/Downloads/*statement*)",
-      "Read(//Users/thanakrit/Downloads/*Statement*)",
-      "Read(//Users/thanakrit/Downloads/STM_*)",
-      "Read(//Users/thanakrit/Downloads/wealth-prof-*.csv)",
-      "Read(./import-data/**)"
+      "Read(~/Downloads/*.pdf)",
+      "Read(~/Downloads/*statement*)",
+      "Read(~/Downloads/*Statement*)",
+      "Read(~/Downloads/STM_*)",
+      "Read(~/Downloads/wealth-prof-*.csv)",
+      "Read(./statements/raw/**)"
     ]
   }
 }
