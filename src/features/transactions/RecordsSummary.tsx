@@ -8,6 +8,7 @@ import { useHousehold } from '@/lib/HouseholdContext'
 import { borneAmount, matchesPersonFilter, sharesByTransaction, type PersonFilter } from '@/lib/filters'
 import { formatBaht } from '@/lib/format'
 import { monthLabel, monthRange, shiftMonth } from '@/lib/month'
+import { matchesRecordsFilter, type RecordsFilterState } from '@/lib/recordsFilter'
 import { useTransactionShares } from '@/lib/transactionShares'
 import { useTransactions } from '@/lib/transactions'
 import { cn } from '@/lib/utils'
@@ -135,6 +136,7 @@ interface Props {
   // In/Out headline for CardCycleSummary's bill total.
   card?: Card | null
   cardCycle?: Cycle | null
+  filter: RecordsFilterState
 }
 
 // Records' month summary + category rollup (DESIGN §7.1 v3.5), extracted so
@@ -145,7 +147,7 @@ interface Props {
 // need to be kept in sync by hand. The underlying queries share TanStack
 // Query's cache with TransactionsScreen's own (identical `queryKey`), so
 // this costs a recomputation, not a second network round-trip.
-export function RecordsSummary({ month, person, card, cardCycle }: Props) {
+export function RecordsSummary({ month, person, card, cardCycle, filter }: Props) {
   const { householdId, members } = useHousehold()
   const range = useMemo(
     () => (cardCycle ? { start: cardCycle.start, end: cardCycle.end } : monthRange(month)),
@@ -192,9 +194,13 @@ export function RecordsSummary({ month, person, card, cardCycle }: Props) {
     [card, widerTransactions, categoryById],
   )
 
+  // CardCycleSummary, below, deliberately does *not* see this filter — a
+  // card's billing-cycle total has to be its real total regardless of which
+  // categories happen to be ticked in Records' Filter screen, or it would
+  // quietly understate what's actually due.
   const filtered = useMemo(
-    () => confirmed.filter((t) => matchesPersonFilter(t, sharesByTxn, person)),
-    [confirmed, sharesByTxn, person],
+    () => confirmed.filter((t) => matchesPersonFilter(t, sharesByTxn, person) && matchesRecordsFilter(t, filter)),
+    [confirmed, sharesByTxn, person, filter],
   )
 
   // D14: the headline is what this person Borne, not the face value of what
@@ -208,15 +214,16 @@ export function RecordsSummary({ month, person, card, cardCycle }: Props) {
   // — useful to see "how much did each of us spend" no matter who's
   // currently selected.
   const personRows = useMemo(() => {
+    const inFilter = confirmed.filter((t) => matchesRecordsFilter(t, filter))
     return members
       .map((m) => {
-        const own = confirmed.filter((t) => matchesPersonFilter(t, sharesByTxn, m.id))
+        const own = inFilter.filter((t) => matchesPersonFilter(t, sharesByTxn, m.id))
         const income = own.filter((t) => t.kind === 'income').reduce((s, t) => s + t.amount, 0)
         const expense = own.filter((t) => t.kind === 'expense').reduce((s, t) => s + borneAmount(t, sharesByTxn, m.id), 0)
         return { key: m.id, label: m.display_name, color: m.color, income, expense }
       })
       .filter((row) => row.income > 0 || row.expense > 0)
-  }, [confirmed, members, sharesByTxn])
+  }, [confirmed, members, sharesByTxn, filter])
 
   // Expense by category, rolled up to effective mains (D10) and to Borne
   // amounts under the active person filter.

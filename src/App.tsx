@@ -8,7 +8,7 @@ import { ErrorScreen } from '@/components/ErrorScreen'
 import { AuthScreen } from './components/AuthScreen'
 import { HouseholdSetup } from './components/HouseholdSetup'
 import { ResetPasswordScreen } from './components/ResetPasswordScreen'
-import { TransactionsScreen } from '@/features/transactions/TransactionsScreen'
+import { TransactionsScreen, type RecordsView } from '@/features/transactions/TransactionsScreen'
 import { ScanBillFlow } from '@/features/transactions/ScanBillFlow'
 import { TransactionSheet } from '@/features/transactions/TransactionSheet'
 import { RecordsSummary } from '@/features/transactions/RecordsSummary'
@@ -25,8 +25,16 @@ import { fetchOwnMember, type HouseholdMember } from './lib/household'
 import { HouseholdProvider } from './lib/HouseholdContext'
 import { useIsDesktop } from './hooks/useIsDesktop'
 import { useUrlState } from './hooks/useUrlState'
-import { currentMonthKey, dayMonthLabel } from './lib/month'
+import { currentMonthKey, dayMonthLabel, shiftMonth, yearLabel, yearOfMonth } from './lib/month'
 import type { PersonFilter } from './lib/filters'
+import {
+  ALL_RECORDS_FILTERS,
+  decodeRecordsFilter,
+  encodeRecordsFilter,
+  isRecordsFilterActive,
+  type RecordsFilterState,
+} from './lib/recordsFilter'
+import { RecordsFilterSheet } from '@/features/transactions/RecordsFilterSheet'
 import { useSession } from './lib/useSession'
 
 function todayIso(): string {
@@ -41,8 +49,27 @@ function SignedInApp({ self }: { self: HouseholdMember }) {
   // "open → jot what was spent → check what's recorded". The url key stays
   // 'transactions' so existing bookmarks/URL state keep working.
   const [tab, setTab] = useUrlState('tab', 'transactions')
-  const [category, setCategory] = useUrlState('cat', '')
-  const [account, setAccount] = useUrlState('acct', '')
+  // Records' Filter screen (cat/acct repurpose two url keys that were wired
+  // through App.tsx for an older single-value tap-through flow but, by the
+  // time this shipped, nothing anywhere still wrote a value into either —
+  // see recordsFilter.ts). `crd` is a separate, already-live feature (a
+  // card's billing-cycle view below) and is left untouched.
+  const [cat, setCat] = useUrlState('cat', '')
+  const [acct, setAcct] = useUrlState('acct', '')
+  const [xfer, setXfer] = useUrlState('xfer', '')
+  const [unc, setUnc] = useUrlState('unc', '')
+  const filter = decodeRecordsFilter({ cat, acct, xfer, unc })
+  function setFilter(next: RecordsFilterState) {
+    const params = encodeRecordsFilter(next)
+    setCat(params.cat)
+    setAcct(params.acct)
+    setXfer(params.xfer)
+    setUnc(params.unc)
+  }
+  const [filterOpen, setFilterOpen] = useState(false)
+  // Daily/Monthly (2026-09) — URL-backed like every other Records mode here,
+  // so a shared link to the yearly rollup lands on the yearly rollup.
+  const [view, setView] = useUrlState('view', 'daily')
   const [cardId, setCardId] = useUrlState('crd', '')
   // Ephemeral, unlike the filters above: it's which cycle a card's detail is
   // scrolled to, not a fact worth round-tripping through a shared link.
@@ -70,12 +97,13 @@ function SignedInApp({ self }: { self: HouseholdMember }) {
     records: (
       <TransactionsScreen
         month={month}
+        onMonthChange={setMonth}
+        view={view as RecordsView}
+        onViewChange={(v) => setView(v)}
         person={person as PersonFilter}
         search={search}
-        categoryId={category || null}
-        onClearCategory={() => setCategory('')}
-        accountId={account || null}
-        onClearAccount={() => setAccount('')}
+        filter={filter}
+        onClearFilter={() => setFilter(ALL_RECORDS_FILTERS)}
         card={activeCard}
         cardCycle={activeCycle}
         onClearCard={() => setCardId('')}
@@ -107,6 +135,8 @@ function SignedInApp({ self }: { self: HouseholdMember }) {
         onOpenSettings={() => setSettingsOpen(true)}
         search={search}
         onSearchChange={setSearch}
+        filterActive={isRecordsFilterActive(filter)}
+        onOpenFilter={() => setFilterOpen(true)}
         cardCycle={
           activeCard && activeCycle
             ? {
@@ -116,10 +146,25 @@ function SignedInApp({ self }: { self: HouseholdMember }) {
               }
             : null
         }
+        yearNav={
+          resolvedTab === 'records' && view === 'monthly' && !activeCard && !search.trim()
+            ? {
+                label: yearLabel(yearOfMonth(month)),
+                onPrev: () => setMonth(shiftMonth(month, -12)),
+                onNext: () => setMonth(shiftMonth(month, 12)),
+              }
+            : null
+        }
         aside={
           isDesktop && resolvedTab === 'records' && !search.trim() ? (
             <SummaryColumn>
-              <RecordsSummary month={month} person={person as PersonFilter} card={activeCard} cardCycle={activeCycle} />
+              <RecordsSummary
+                month={month}
+                person={person as PersonFilter}
+                card={activeCard}
+                cardCycle={activeCycle}
+                filter={filter}
+              />
             </SummaryColumn>
           ) : undefined
         }
@@ -145,6 +190,16 @@ function SignedInApp({ self }: { self: HouseholdMember }) {
         </ErrorBoundary>
       </AppShell>
       <TransactionSheet open={quickAddOpen} onOpenChange={setQuickAddOpen} />
+      {filterOpen && (
+        <RecordsFilterSheet
+          filter={filter}
+          onApply={(next) => {
+            setFilter(next)
+            setFilterOpen(false)
+          }}
+          onClose={() => setFilterOpen(false)}
+        />
+      )}
       {scannedBill && <ScanBillFlow file={scannedBill} onDone={() => setScannedBill(null)} />}
       {settingsOpen && (
         <FullScreenPage title="Settings" onClose={() => setSettingsOpen(false)}>

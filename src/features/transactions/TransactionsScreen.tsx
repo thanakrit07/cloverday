@@ -3,17 +3,24 @@ import { useQueryClient } from '@tanstack/react-query'
 import { ArrowRightLeft, Check, ChevronRight, ReceiptText, X } from 'lucide-react'
 import { toast } from 'sonner'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
+import { Drawer, DrawerContent, DrawerHeader, DrawerTitle } from '@/components/ui/drawer'
 import { SwipeableRow } from '@/components/SwipeableRow'
 import { useIsDesktop } from '@/hooks/useIsDesktop'
 import { CategoryIcon } from '@/lib/categoryIcons'
-import { categoryPath, effectiveMainId, useCategories } from '@/lib/categories'
+import { categoryPath, useCategories } from '@/lib/categories'
 import type { Card } from '@/lib/cards'
 import type { Cycle } from '@/lib/finance/billingCycle'
 import { useInstrumentNames } from '@/lib/instruments'
 import { useHousehold } from '@/lib/HouseholdContext'
 import { borneAmount, matchesPersonFilter, sharesByTransaction, type PersonFilter } from '@/lib/filters'
 import { formatBaht } from '@/lib/format'
-import { ALL_TIME, dayOfMonthLabel, fullDateLabel, monthRange, weekdayLabel } from '@/lib/month'
+import { ALL_TIME, dayOfMonthLabel, fullDateLabel, monthRange, weekdayLabel, yearOfMonth } from '@/lib/month'
+import {
+  describeRecordsFilter,
+  isRecordsFilterActive,
+  matchesRecordsFilter,
+  type RecordsFilterState,
+} from '@/lib/recordsFilter'
 import { supabase } from '@/lib/supabase'
 import { parsePeriodSourceKey } from '@/lib/installmentMaterialiser'
 import { installmentPeriodLabel } from '@/lib/installmentLabel'
@@ -24,6 +31,8 @@ import { entryAmount, groupByReceipt, type LedgerEntry } from '@/lib/receiptGrou
 import { useDeleteReceipt, useReceipts, useRestoreReceipt } from '@/lib/receipts'
 import { useDeleteTransaction, useTransactions, type Transaction } from '@/lib/transactions'
 import { cn } from '@/lib/utils'
+import { CalendarGrid } from './CalendarGrid'
+import { MonthlyBreakdown } from './MonthlyBreakdown'
 import { RecordsSummary } from './RecordsSummary'
 import { ReviewStrip } from './ReviewStrip'
 import { TransactionSheet } from './TransactionSheet'
@@ -32,14 +41,17 @@ function todayIso(): string {
   return new Date().toISOString().slice(0, 10)
 }
 
+export type RecordsView = 'daily' | 'calendar' | 'monthly'
+
 interface Props {
   month: string
+  onMonthChange: (month: string) => void
+  view: RecordsView
+  onViewChange: (view: RecordsView) => void
   person: PersonFilter
   search: string
-  categoryId?: string | null
-  onClearCategory?: () => void
-  accountId?: string | null
-  onClearAccount?: () => void
+  filter: RecordsFilterState
+  onClearFilter?: () => void
   // A card's natural period is its billing cycle, not the calendar month
   // (§7.3 v3.8) — when set, this overrides `month` for the fetch range and
   // swaps the usual In/Out summary for CardCycleSummary's bill total.
@@ -50,12 +62,13 @@ interface Props {
 
 export function TransactionsScreen({
   month,
+  onMonthChange,
+  view,
+  onViewChange,
   person,
   search,
-  categoryId,
-  onClearCategory,
-  accountId,
-  onClearAccount,
+  filter,
+  onClearFilter,
   card,
   cardCycle,
   onClearCard,
@@ -66,6 +79,16 @@ export function TransactionsScreen({
   // different month silently came back empty — indistinguishable from
   // "you never did that". An active query fetches the whole ledger instead.
   const isSearching = search.trim().length > 0
+  // The Monthly tab (2026-09) and a card's billing-cycle view are two
+  // different ways of stepping outside a single calendar month, and neither
+  // makes sense layered on the other — a card's cycle table for a whole
+  // year has no design yet, so viewing a card falls back to Daily.
+  const isMonthly = view === 'monthly' && !isSearching && !cardCycle
+  // Calendar (2026-09) stays within one month like Daily does, so it has no
+  // such conflict with a card's cycle view — but a search's "whole ledger,
+  // no month" range has no month to grid, so it still falls back to Daily.
+  const isCalendar = view === 'calendar' && !isSearching
+  const showViewToggle = !isSearching && !cardCycle
   const range = useMemo(
     () => (isSearching ? ALL_TIME : cardCycle ? { start: cardCycle.start, end: cardCycle.end } : monthRange(month)),
     [month, cardCycle, isSearching],
@@ -79,6 +102,8 @@ export function TransactionsScreen({
   const isDesktop = useIsDesktop()
   const [editing, setEditing] = useState<Transaction | null>(null)
   const [confirmingDelete, setConfirmingDelete] = useState<Transaction | null>(null)
+  // Calendar tab: which day's bottom drawer is open, if any.
+  const [calendarDrawerDate, setCalendarDrawerDate] = useState<string | null>(null)
   const remove = useDeleteTransaction(householdId)
   const { data: payments } = useInstallmentPayments(householdId)
   const setPeriodPaid = useSetPeriodPaid(householdId)
@@ -155,14 +180,6 @@ export function TransactionsScreen({
     [transactions, categoryById],
   )
 
-  const matchesCategory = (t: Transaction) => {
-    if (!categoryId) return true
-    if (t.category_id === categoryId) return true
-    const category = t.category_id ? categoryById.get(t.category_id) : null
-    return category != null && effectiveMainId(category) === categoryId
-  }
-  const matchesAccount = (t: Transaction) =>
-    !accountId || t.from_account_id === accountId || t.to_account_id === accountId
   const matchesCard = (t: Transaction) => !card || t.from_card_id === card.id || t.to_card_id === card.id
   const matchesSearch = (t: Transaction) => {
     if (!search.trim()) return true
@@ -180,8 +197,7 @@ export function TransactionsScreen({
   const filtered = confirmed.filter(
     (t) =>
       matchesPersonFilter(t, sharesByTxn, person) &&
-      matchesCategory(t) &&
-      matchesAccount(t) &&
+      matchesRecordsFilter(t, filter) &&
       matchesCard(t) &&
       matchesSearch(t),
   )
@@ -201,6 +217,19 @@ export function TransactionsScreen({
     }
     return [...map.entries()].sort((a, b) => (a[0] < b[0] ? 1 : -1))
   }, [filtered])
+  const groupsByDate = useMemo(() => new Map(groups), [groups])
+
+  // Calendar tab: each real day's income/expense, same Borne math as the
+  // Daily ledger's own day headers below — a cell's figure and what the
+  // drawer it opens adds up to never disagree. Not memoized: `groups` (a
+  // month's worth of days, already memoized) is small enough that summing
+  // it per render costs less than the machinery to cache it would.
+  const dailyTotals = new Map<string, { income: number; expense: number }>()
+  for (const [date, items] of groups) {
+    const income = items.filter((t) => t.kind === 'income').reduce((sum, t) => sum + borneOf(t), 0)
+    const expense = items.filter((t) => t.kind === 'expense').reduce((sum, t) => sum + borneOf(t), 0)
+    dailyTotals.set(date, { income, expense })
+  }
 
   function instrumentLabel(t: Transaction, side: 'from' | 'to'): string {
     const accountId = side === 'from' ? t.from_account_id : t.to_account_id
@@ -210,7 +239,13 @@ export function TransactionsScreen({
     return ''
   }
 
-  const filterCategory = categoryId ? categoryById.get(categoryId) : null
+  const filterActive = isRecordsFilterActive(filter)
+  const filterSummary = filterActive
+    ? describeRecordsFilter(filter, {
+        category: (id) => categoryById.get(id)?.name,
+        instrument: (id) => instrumentName?.[`account:${id}`] ?? instrumentName?.[`card:${id}`],
+      })
+    : ''
 
   // Extracted from the ledger's own map so the same row can be rendered
   // inside an expanded Receipt without a second copy of it (D22). A line of
@@ -442,34 +477,63 @@ export function TransactionsScreen({
   }
 
 
+  // Daily/Calendar/Monthly (2026-09): a compact segmented control rather
+  // than a proper Tabs component — it lives inside this screen rather than
+  // AppShell so the other tabs (Balances, Upcoming) are untouched by it.
+  const viewToggle = showViewToggle && (
+    <div className="inline-flex gap-1 rounded-lg bg-muted p-0.5">
+      {(['daily', 'calendar', 'monthly'] as const).map((v) => (
+        <button
+          key={v}
+          onClick={() => onViewChange(v)}
+          className={cn(
+            'rounded-md px-3 py-1 text-xs font-medium capitalize transition-colors',
+            view === v ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground',
+          )}
+        >
+          {v}
+        </button>
+      ))}
+    </div>
+  )
+
+  if (isMonthly) {
+    return (
+      <div className="mx-auto max-w-2xl space-y-3 p-4">
+        {viewToggle}
+        <MonthlyBreakdown
+          year={yearOfMonth(month)}
+          person={person}
+          filter={filter}
+          onSelectMonth={(selected) => {
+            onMonthChange(selected)
+            onViewChange('daily')
+          }}
+        />
+      </div>
+    )
+  }
+
   return (
     <div className="mx-auto max-w-2xl space-y-3 p-4">
+      {viewToggle}
       {/* One line (DESIGN §7.1 v3.5): the planning figures are the reason to
           open Records, but the daily habit is "jot → check the list", so the
           summary can't push the first transaction off the screen. On
           desktop this same component renders in AppShell's summary column
           instead (App.tsx), so it isn't rendered twice. */}
-      {!isDesktop && !isSearching && <RecordsSummary month={month} person={person} card={card} cardCycle={cardCycle} />}
+      {!isDesktop && !isSearching && (
+        <RecordsSummary month={month} person={person} card={card} cardCycle={cardCycle} filter={filter} />
+      )}
 
       <ReviewStrip onEdit={setEditing} />
-      {filterCategory && (
-        <button
-          onClick={onClearCategory}
-          className="inline-flex items-center gap-1.5 rounded-full border border-primary bg-primary/10 px-2.5 py-1 text-xs text-foreground"
-        >
-          <CategoryIcon icon={filterCategory.icon} color={filterCategory.color} className="size-3.5" />
-          {filterCategory.name}
-          <X className="size-3" aria-label="Clear category filter" />
-        </button>
-      )}
-      {accountId && (
-        <button
-          onClick={onClearAccount}
-          className="inline-flex items-center gap-1.5 rounded-full border border-primary bg-primary/10 px-2.5 py-1 text-xs text-foreground"
-        >
-          {instrumentName?.[`account:${accountId}`] ?? 'Account'}
-          <X className="size-3" aria-label="Clear account filter" />
-        </button>
+      {filterActive && (
+        <div className="flex items-center gap-1.5 rounded-full border border-primary bg-primary/10 px-2.5 py-1 text-xs text-foreground">
+          <span className="min-w-0 flex-1 truncate">{filterSummary}</span>
+          <button onClick={onClearFilter} className="shrink-0" aria-label="Clear filters">
+            <X className="size-3" />
+          </button>
+        </div>
       )}
       {card && (
         <button
@@ -480,46 +544,77 @@ export function TransactionsScreen({
           <X className="size-3" aria-label="Clear card filter" />
         </button>
       )}
-      {groups.length === 0 && (
-        <p className="text-sm text-muted-foreground">{isSearching ? 'No matches.' : 'No transactions this month.'}</p>
+      {!isCalendar && groups.length === 0 && (
+        <div className="space-y-2">
+          <p className="text-sm text-muted-foreground">
+            {isSearching ? 'No matches.' : filterActive ? 'No records match these filters.' : 'No transactions this month.'}
+          </p>
+          {!isSearching && filterActive && (
+            <button onClick={onClearFilter} className="text-sm font-medium text-primary">
+              Clear filters
+            </button>
+          )}
+        </div>
       )}
-      {/* One continuous ledger rather than a card per row (Money Manager
-          density): day headers carry that day's totals, and hairline
-          dividers replace the per-row borders and gaps. */}
-      <div className="overflow-hidden rounded-xl border bg-card">
-        {groups.map(([date, items], groupIndex) => {
-          const dayIncome = items.filter((t) => t.kind === 'income').reduce((s, t) => s + borneOf(t), 0)
-          const dayExpense = items.filter((t) => t.kind === 'expense').reduce((s, t) => s + borneOf(t), 0)
-          return (
-            <div key={date} className={groupIndex > 0 ? 'border-t' : undefined}>
-              <div className="flex items-center gap-2 bg-muted/50 px-3 py-1">
-                {isSearching ? (
-                  <span className="text-sm font-semibold tabular-nums">{fullDateLabel(date)}</span>
-                ) : (
-                  <>
-                    <span className="text-sm font-semibold tabular-nums">{dayOfMonthLabel(date)}</span>
-                    <span className="rounded bg-background px-1.5 py-px text-[10px] text-muted-foreground">
-                      {weekdayLabel(date)}
-                    </span>
-                  </>
-                )}
-                <span className="ml-auto flex items-center gap-3 text-[11px] tabular-nums">
-                  {dayIncome > 0 && (
-                    <span className="text-good">{formatBaht(dayIncome)}</span>
+      {isCalendar ? (
+        <CalendarGrid month={month} totals={dailyTotals} onSelectDay={setCalendarDrawerDate} />
+      ) : (
+        /* One continuous ledger rather than a card per row (Money Manager
+           density): day headers carry that day's totals, and hairline
+           dividers replace the per-row borders and gaps. */
+        <div className="overflow-hidden rounded-xl border bg-card">
+          {groups.map(([date, items], groupIndex) => {
+            const dayIncome = items.filter((t) => t.kind === 'income').reduce((s, t) => s + borneOf(t), 0)
+            const dayExpense = items.filter((t) => t.kind === 'expense').reduce((s, t) => s + borneOf(t), 0)
+            return (
+              <div key={date} className={groupIndex > 0 ? 'border-t' : undefined}>
+                <div className="flex items-center gap-2 bg-muted/50 px-3 py-1">
+                  {isSearching ? (
+                    <span className="text-sm font-semibold tabular-nums">{fullDateLabel(date)}</span>
+                  ) : (
+                    <>
+                      <span className="text-sm font-semibold tabular-nums">{dayOfMonthLabel(date)}</span>
+                      <span className="rounded bg-background px-1.5 py-px text-[10px] text-muted-foreground">
+                        {weekdayLabel(date)}
+                      </span>
+                    </>
                   )}
-                  {dayExpense > 0 && <span className="text-destructive">{formatBaht(dayExpense)}</span>}
-                </span>
-              </div>
+                  <span className="ml-auto flex items-center gap-3 text-[11px] tabular-nums">
+                    {dayIncome > 0 && (
+                      <span className="text-good">{formatBaht(dayIncome)}</span>
+                    )}
+                    {dayExpense > 0 && <span className="text-destructive">{formatBaht(dayExpense)}</span>}
+                  </span>
+                </div>
 
-              <ul>
-                {groupByReceipt(items).map((entry) =>
+                <ul>
+                  {groupByReceipt(items).map((entry) =>
+                    entry.type === 'transaction' ? renderRow(entry.transaction) : renderReceipt(entry),
+                  )}
+                </ul>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      <Drawer open={calendarDrawerDate != null} onOpenChange={(open) => !open && setCalendarDrawerDate(null)}>
+        <DrawerContent>
+          <DrawerHeader>
+            <DrawerTitle>{calendarDrawerDate ? fullDateLabel(calendarDrawerDate) : ''}</DrawerTitle>
+          </DrawerHeader>
+          {calendarDrawerDate && (groupsByDate.get(calendarDrawerDate) ?? []).length === 0 ? (
+            <p className="px-4 pb-4 text-sm text-muted-foreground">No transactions this day.</p>
+          ) : (
+            <ul>
+              {calendarDrawerDate &&
+                groupByReceipt(groupsByDate.get(calendarDrawerDate) ?? []).map((entry) =>
                   entry.type === 'transaction' ? renderRow(entry.transaction) : renderReceipt(entry),
                 )}
-              </ul>
-            </div>
-          )
-        })}
-      </div>
+            </ul>
+          )}
+        </DrawerContent>
+      </Drawer>
 
       {editing && <TransactionSheet open onOpenChange={(open) => !open && setEditing(null)} transaction={editing} />}
       {editingReceipt && (

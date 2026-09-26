@@ -1,5 +1,5 @@
 import { useState, type ReactNode } from 'react'
-import { Camera, ChevronLeft, ChevronRight, CloudOff, Plus, Search, Settings as SettingsIcon, X } from 'lucide-react'
+import { Camera, ChevronLeft, ChevronRight, CloudOff, Plus, Search, Settings as SettingsIcon, SlidersHorizontal, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { MonthYearPicker } from '@/components/MonthYearPicker'
@@ -28,11 +28,21 @@ interface Props {
   onOpenSettings: () => void
   search: string
   onSearchChange: (search: string) => void
+  // Records' Filter screen (kind/category/account, distinct from the month
+  // and person controls already here) — undefined disables the button
+  // entirely rather than rendering it disabled, matching onScanBill below.
+  filterActive?: boolean
+  onOpenFilter?: () => void
   children: ReactNode
   // A card's detail reuses Records (§7.3 v3.8), but its natural period is
   // the billing cycle, not the calendar month — set while one is open to
   // swap the month nav for cycle nav; null/undefined for the normal month.
   cardCycle?: { label: string; onPrev: () => void; onNext: () => void } | null
+  // Records' Monthly tab (2026-09): swaps the month stepper for a year one,
+  // same slot, same shape as cardCycle above — mutually exclusive with it
+  // (TransactionsScreen falls back to Daily while a card is open, so the two
+  // never both apply) and beaten by it in the precedence below regardless.
+  yearNav?: { label: string; onPrev: () => void; onNext: () => void } | null
   // Desktop-only (≥ lg) third region. Only Records fills this today; every
   // other tab renders with no aside. Wrap content in <SummaryColumn>.
   aside?: ReactNode
@@ -50,8 +60,11 @@ export function AppShell({
   onOpenSettings,
   search,
   onSearchChange,
+  filterActive,
+  onOpenFilter,
   children,
   cardCycle,
+  yearNav,
   aside,
 }: Props) {
   const { members } = useHousehold()
@@ -66,6 +79,14 @@ export function AppShell({
   ]
 
   const isRecords = tab === 'records'
+  const filterButton = isRecords && onOpenFilter && (
+    <Button variant="ghost" size="icon" onClick={onOpenFilter} aria-label="Filter records" className="relative">
+      <SlidersHorizontal className="size-4" />
+      {filterActive && (
+        <span className="absolute right-1.5 top-1.5 size-1.5 rounded-full bg-primary" aria-hidden="true" />
+      )}
+    </Button>
+  )
   // Balances honours the person filter too now (D19) — "You" narrows it to
   // your own accounts and cards, so the chips need to be reachable there,
   // not just on Records.
@@ -127,6 +148,16 @@ export function AppShell({
               // subject while a query is running — swapped for a plain
               // label rather than arrows that no longer mean anything.
               <h1 className="font-heading text-base font-semibold">Search results</h1>
+            ) : isRecords && yearNav ? (
+              <div className="flex items-center gap-1">
+                <Button variant="ghost" size="icon" onClick={yearNav.onPrev} aria-label="Previous year">
+                  <ChevronLeft className="size-4" />
+                </Button>
+                <span className="rounded-lg px-2 py-1 font-heading text-base font-semibold">{yearNav.label}</span>
+                <Button variant="ghost" size="icon" onClick={yearNav.onNext} aria-label="Next year">
+                  <ChevronRight className="size-4" />
+                </Button>
+              </div>
             ) : isRecords ? (
               <div className="flex items-center gap-1">
                 <Button variant="ghost" size="icon" onClick={() => onMonthChange(shiftMonth(month, -1))} aria-label="Previous month">
@@ -163,6 +194,8 @@ export function AppShell({
                 />
               </label>
             )}
+
+            {filterButton}
 
             {!online && (
               <span className="flex shrink-0 items-center gap-1.5 rounded-full bg-muted px-3 py-1 text-xs text-muted-foreground">
@@ -226,6 +259,16 @@ export function AppShell({
                   <ChevronRight className="size-4" />
                 </Button>
               </div>
+            ) : isRecords && yearNav ? (
+              <div className="flex items-center gap-1">
+                <Button variant="ghost" size="icon" onClick={yearNav.onPrev} aria-label="Previous year">
+                  <ChevronLeft className="size-4" />
+                </Button>
+                <span className="rounded-lg px-2 py-1 font-heading text-sm font-medium">{yearNav.label}</span>
+                <Button variant="ghost" size="icon" onClick={yearNav.onNext} aria-label="Next year">
+                  <ChevronRight className="size-4" />
+                </Button>
+              </div>
             ) : isRecords ? (
               <div className="flex items-center gap-1">
                 <Button variant="ghost" size="icon" onClick={() => onMonthChange(shiftMonth(month, -1))} aria-label="Previous month">
@@ -246,9 +289,12 @@ export function AppShell({
               <h1 className="font-heading text-sm font-medium">{tabLabel}</h1>
             )}
 
-            <Button variant="ghost" size="icon" onClick={onOpenSettings} aria-label="Settings">
-              <SettingsIcon className="size-4" />
-            </Button>
+            <div className="flex items-center">
+              {filterButton}
+              <Button variant="ghost" size="icon" onClick={onOpenSettings} aria-label="Settings">
+                <SettingsIcon className="size-4" />
+              </Button>
+            </div>
           </div>
         )}
 
