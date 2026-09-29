@@ -43,13 +43,16 @@ seeded users below.
 
 ## Applying a new migration / feature to local before prod
 
-1. Write the migration in `supabase/migrations/000N_*.sql` as normal.
+1. Write the migration by hand as `supabase/migrations/NNNN_<name>.sql`,
+   numbered one past the highest existing file. This repo numbers
+   migrations sequentially, so don't use `supabase migration new` (it
+   writes timestamp names), despite what the `supabase` skill says.
 2. `npx -y supabase db reset` -- drops the local DB, reapplies **every**
    migration in order, then runs `supabase/seed.sql`. This is the fast,
    safe way to test a new migration from scratch, repeatedly.
 3. Add mock rows for the new feature to `supabase/seed.sql` (see existing
    entries for the pattern: fixed UUIDs so rows can reference each other).
-   Re-run `supabase db reset` to pick them up.
+   Re-run `npx -y supabase db reset` to pick them up.
 4. Sanity-check the schema directly before touching the UI:
    ```bash
    PGPASSWORD=postgres psql "postgresql://postgres:postgres@127.0.0.1:54322/postgres" -c "select ..."
@@ -83,7 +86,7 @@ straight past the "create household" screen for either login.
   `permission denied` until this is set. It's already set in
   `supabase/config.toml`. **This flag only takes effect on a fresh DB
   init** -- if a table ever 403s locally after editing config, run
-  `supabase db reset` (not just `stop`/`start`) to pick it up.
+  `npx -y supabase db reset` (not just `stop`/`start`) to pick it up.
   The flag is deprecated (removal slated 2026-10-30); if it stops working
   after a CLI upgrade, add explicit
   `grant select, insert, update, delete on <table> to authenticated;`
@@ -100,5 +103,5 @@ npx -y supabase stop   # stops containers, keeps the DB volume (data persists)
 colima stop            # frees the VM's CPU/RAM entirely
 ```
 
-`supabase stop --no-backup` also discards the DB volume, if you want a
+`npx -y supabase stop --no-backup` also discards the DB volume, if you want a
 truly clean slate next time instead of `db reset`.
