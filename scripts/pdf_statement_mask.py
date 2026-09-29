@@ -26,7 +26,7 @@ Mask/unmask ข้อมูลบุคคล (ชื่อคน, เลขบ�
      (วางในแชท หรือให้ Claude อ่านไฟล์ .txt ตรงๆ ก็ได้ เพราะ mask แล้ว)
 
   4) เอาผลลัพธ์ (CSV ที่ยังมี placeholder แบบ ⟦P3⟧ ปนอยู่) มา unmask กลับ:
-     npm run statements:unmask   (หรือ npm run statements:import เพื่อ unmask + import เลย)
+     npm run statements:unmask   แล้ว import ผ่านหน้าตรวจ statement ในแอป (ADR-0019)
 
   mask_map.json คือกุญแจแปลงกลับ — เก็บไว้ในเครื่อง อย่า commit เข้า git,
   อย่าส่งให้ Claude หรือที่ใดๆ ใช้ไฟล์เดียวกันได้ทุก statement (ชื่อคนเดิม

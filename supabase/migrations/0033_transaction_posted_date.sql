@@ -5,7 +5,7 @@
 -- purchase on statement day that posts the next day is on the *next* bill.
 -- So the posting date is stored alongside, filled from the statement when a
 -- line is imported or confirmed against a hand-entered row, and the cycle
--- engine reads it when present (ADR-0017). Null for anything no statement has
+-- engine reads it when present (ADR-0019). Null for anything no statement has
 -- vouched for yet.
 alter table transactions add column posted_date date;
 

@@ -166,7 +166,7 @@ export function installmentChargeInCycle(
 
 // A card charge usually posts a day or two after it was made, and its posting
 // date — not the purchase date — decides which bill it lands on. Rows a
-// statement has vouched for carry `posted_date` (ADR-0017); hand-entered rows
+// statement has vouched for carry `posted_date` (ADR-0019); hand-entered rows
 // don't until one is confirmed against a statement line, so they fall back to
 // the purchase date.
 export function cycleDate(t: { date: string; posted_date?: string | null }): string {

@@ -1,6 +1,6 @@
 ---
 name: statement-import
-description: "Use when the user wants to process masked bank/card statement text files in statements/staging/masked/ into a staged transactions CSV -- e.g. \"import statement ใหม่\", \"process masked statements\", \"อัปเดต staged.csv\", or after they've run `npm run statements:mask` on new PDFs. Step 2 of 3: this skill only stages the CSV -- the user imports it into the DB themselves with `npm run statements:import`."
+description: "Use when the user wants to process masked bank/card statement text files in statements/staging/masked/ into a staged transactions CSV -- e.g. \"import statement ใหม่\", \"process masked statements\", \"อัปเดต staged.csv\", or after they've run `npm run statements:mask` on new PDFs. Step 2 of 3: this skill only stages the CSV -- the user unmasks it and imports it through the app's statement review screen (ADR-0019)."
 ---
 
 # Statement import (privacy-safe pipeline)
@@ -92,10 +92,10 @@ statements/staging/               ← ใช้งานได้ปกติ �
 6. **บอกขั้นตอนถัดไป** ให้ผู้ใช้รันเอง (Claude ห้ามรัน `npm run statements:*`
    เอง เพราะทุกตัวแตะ `statements/raw/`):
    ```
-   npm run statements:check    # unmask + ดูว่าจะ import กี่แถว/ข้ามกี่แถว (ไม่เขียน DB)
-   npm run statements:import   # unmask + import จริง (ข้ามแถวที่มีใน DB แล้วให้เอง)
+   npm run statements:unmask   # → statements/raw/final/transactions.csv
    ```
-   `statements:import` ต้องมี `SUPABASE_DB_URL=...` ใน `.env.local`
+   แล้วเปิดหน้าตรวจ statement ในแอป เลือกไฟล์นั้น (อ่านใน browser, เขียน DB
+   ตอนกด Apply เท่านั้น — ADR-0019) import ซ้ำไฟล์เดิมได้ ไม่เกิดรายการซ้ำ
    ถ้าแนะนำให้ผู้ใช้เปิดดู `statements/raw/final/transactions.csv` ก่อน import
    ก็ได้ แต่ Claude ห้ามเปิดเอง
 

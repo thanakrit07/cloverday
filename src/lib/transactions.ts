@@ -30,7 +30,7 @@ export interface Transaction {
   source_key: string | null
   /** D22: set when this transaction is one line of a Receipt (ADR-0015). */
   receipt_id: string | null
-  /** When a statement says the bank posted it; decides a card row's billing cycle (ADR-0017). */
+  /** When a statement says the bank posted it; decides a card row's billing cycle (ADR-0019). */
   posted_date: string | null
 }
 

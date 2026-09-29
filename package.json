@@ -12,9 +12,7 @@
     "test": "vitest run",
     "statements:mask": "python3 scripts/pdf_statement_mask.py mask statements/raw/statements/*.pdf",
     "statements:mask:force": "python3 scripts/pdf_statement_mask.py mask statements/raw/statements/*.pdf --force",
-    "statements:unmask": "python3 scripts/pdf_statement_mask.py unmask statements/staging/staged.csv",
-    "statements:check": "npm run statements:unmask && python3 scripts/import_csv_to_db.py statements/raw/final/transactions.csv --dry-run",
-    "statements:import": "npm run statements:unmask && python3 scripts/import_csv_to_db.py statements/raw/final/transactions.csv"
+    "statements:unmask": "python3 scripts/pdf_statement_mask.py unmask statements/staging/staged.csv"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

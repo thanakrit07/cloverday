@@ -18,7 +18,7 @@ wealth-prof-transactions.csv โดยรันทั้งหมดในเค
 
 หลังจากได้ไฟล์ CSV แล้ว:
   1. เปิดตรวจสอบ/แก้ไข Category, Kind ที่ auto-guess ผิด ด้วยตัวเอง (Excel/Numbers/text editor)
-  2. ใช้ scripts/reconcile_statement.py เทียบกับ DB ต่อได้เลย (ไฟล์ CSV นี้ไม่มีข้อมูล
+  2. import ผ่านหน้าตรวจ statement ในแอป (ADR-0019) (ไฟล์ CSV นี้ไม่มีข้อมูล
      บุคคลที่ 3 มากกว่าที่ statement ต้นฉบับมีอยู่แล้ว — เป็นแค่การแปลงรูปแบบ)
 
 หมายเหตุ: สคริปต์นี้เดารูปแบบทั่วไปของ statement ไทย (วันที่ + รายละเอียด + จำนวนเงิน
