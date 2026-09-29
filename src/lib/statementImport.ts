@@ -7,6 +7,7 @@ import { supabase } from './supabase'
 import { parseAmount, parseDate } from './import/values'
 import type { TransactionKind, Transaction } from './transactions'
 import type { Category } from './categories'
+import { computeShareRows } from './transactionShares'
 
 export type RowStatus = 'error' | 'imported' | 'match' | 'review' | 'new'
 
@@ -25,6 +26,8 @@ export interface StatementRow {
   toAccountId: string | null
   toCardId: string | null
   sourceKey: string
+  /** CSV's Owner column as written (a member's name, "shared", or blank). */
+  ownerHint: string
   /** For 'match': the hand-entered row the screen suggests this line is. */
   matchId: string | null
 }
@@ -146,17 +149,34 @@ export function buildStatementRows(rows: Record<string, string>[], ctx: Statemen
       toAccountId: to.accountId,
       toCardId: to.cardId,
       sourceKey,
+      ownerHint: (raw['Owner'] ?? '').trim(),
       matchId,
     }
   })
+}
+
+/** Who bears a row: a member's id, or SHARED for an even split (D13). */
+export const SHARED = 'shared'
+
+export interface ApplyContext {
+  categoryKindOf: (id: string) => 'income' | 'expense' | null
+  /** The member an instrument belongs to (null = Common Pot) — the one who fronted the money. */
+  instrumentOwnerOf: (accountId: string | null, cardId: string | null) => string | null
+  memberIds: string[]
+  /** line -> member id or SHARED */
+  whoOf: (row: StatementRow) => string
 }
 
 /** Accepted new rows are inserted (ON CONFLICT DO NOTHING); confirmed matches update the hand-entered row. */
 export async function applyStatementRows(
   householdId: string,
   rows: StatementRow[],
-  categoryKindOf: (id: string) => 'income' | 'expense' | null,
+  { categoryKindOf, instrumentOwnerOf, memberIds, whoOf }: ApplyContext,
 ): Promise<{ inserted: number; matched: number }> {
+  const ownerOf = (r: StatementRow) => {
+    const who = whoOf(r)
+    return who === SHARED ? null : who
+  }
   const inserts = rows
     .filter((r) => !r.matchId)
     .map((r) => ({
@@ -166,6 +186,7 @@ export async function applyStatementRows(
       kind: r.kind,
       category_id: r.categoryId,
       category_kind: r.categoryId ? categoryKindOf(r.categoryId) : null,
+      owner_id: ownerOf(r),
       description: '',
       amount: r.amount,
       from_account_id: r.fromAccountId,
@@ -177,10 +198,27 @@ export async function applyStatementRows(
       source_key: r.sourceKey,
     }))
   if (inserts.length) {
-    const { error } = await supabase
+    const { data, error } = await supabase
       .from('transactions')
       .upsert(inserts, { onConflict: 'household_id,source_key', ignoreDuplicates: true })
+      .select('id, source_key')
     if (error) throw error
+    // Splits for the rows that actually went in (a skipped duplicate returns nothing).
+    const byKey = new Map(rows.map((r) => [r.sourceKey, r]))
+    const shares = (data ?? []).flatMap(({ id, source_key }) => {
+      const r = byKey.get(source_key)!
+      return computeShareRows({
+        kind: r.kind,
+        ownerId: ownerOf(r),
+        frontingMemberId: instrumentOwnerOf(r.fromAccountId, r.fromCardId),
+        amount: r.amount,
+        memberIds,
+      }).map((s) => ({ household_id: householdId, transaction_id: id, ...s }))
+    })
+    if (shares.length) {
+      const { error: shareError } = await supabase.from('transaction_shares').insert(shares)
+      if (shareError) throw shareError
+    }
   }
   const matches = rows.filter((r) => r.matchId)
   for (const r of matches) {

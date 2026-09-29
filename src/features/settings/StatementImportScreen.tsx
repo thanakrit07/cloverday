@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
@@ -10,26 +10,65 @@ import { addDays } from '@/lib/finance/billingCycle'
 import { formatBaht } from '@/lib/format'
 import { useHousehold } from '@/lib/HouseholdContext'
 import { parseCsvText } from '@/lib/import/parseCsv'
-import { applyStatementRows, buildStatementRows, type StatementRow } from '@/lib/statementImport'
+import { applyStatementRows, buildStatementRows, SHARED, type StatementRow } from '@/lib/statementImport'
 import { useTransactions } from '@/lib/transactions'
 import { cn } from '@/lib/utils'
 
 type Tab = 'review' | 'new' | 'imported'
 const TAB_OF: Record<StatementRow['status'], Tab> = { error: 'review', match: 'review', review: 'review', new: 'new', imported: 'imported' }
 const TAB_LABEL: Record<Tab, string> = { review: 'Needs review', new: 'New', imported: 'Already imported' }
+const PAGE = 100
+
+// Work in progress survives a reload but not the browser tab: sessionStorage,
+// never localStorage — this is the unmasked statement.
+const DRAFT_KEY = 'statement-import-draft'
+interface Draft {
+  csvRows: Record<string, string>[]
+  accepted: number[]
+  categoryOverride: [number, string][]
+  whoOverride: [number, string][]
+}
+function loadDraft(): Draft | null {
+  try {
+    const raw = sessionStorage.getItem(DRAFT_KEY)
+    return raw ? (JSON.parse(raw) as Draft) : null
+  } catch {
+    return null
+  }
+}
+function clearDraft() {
+  try {
+    sessionStorage.removeItem(DRAFT_KEY)
+  } catch {
+    // nothing to clear
+  }
+}
 
 // ADR-0019: the unmasked statement CSV is read here in the browser and written
 // only on Apply. Nothing is accepted by default — "Accept all" is one tap.
 export function StatementImportScreen({ onClose }: { onClose: () => void }) {
-  const { householdId } = useHousehold()
+  const { householdId, self, members } = useHousehold()
   const queryClient = useQueryClient()
   const { data: accounts } = useAccounts(householdId)
   const { data: cards } = useCards(householdId)
   const { data: categories } = useCategories(householdId)
-  const [csvRows, setCsvRows] = useState<Record<string, string>[] | null>(null)
+  const [draft] = useState(loadDraft)
+  const [csvRows, setCsvRows] = useState<Record<string, string>[] | null>(draft?.csvRows ?? null)
   const [tab, setTab] = useState<Tab>('review')
-  const [accepted, setAccepted] = useState<Set<number>>(new Set())
-  const [categoryOverride, setCategoryOverride] = useState<Map<number, string>>(new Map())
+  const [accepted, setAccepted] = useState<Set<number>>(new Set(draft?.accepted))
+  const [categoryOverride, setCategoryOverride] = useState<Map<number, string>>(new Map(draft?.categoryOverride))
+  const [whoOverride, setWhoOverride] = useState<Map<number, string>>(new Map(draft?.whoOverride))
+  const [shown, setShown] = useState(PAGE)
+
+  useEffect(() => {
+    if (!csvRows) return
+    const next: Draft = { csvRows, accepted: [...accepted], categoryOverride: [...categoryOverride], whoOverride: [...whoOverride] }
+    try {
+      sessionStorage.setItem(DRAFT_KEY, JSON.stringify(next))
+    } catch {
+      // storage full or blocked: the screen still works, it just won't survive a reload
+    }
+  }, [csvRows, accepted, categoryOverride, whoOverride])
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [applying, setApplying] = useState(false)
 
@@ -47,6 +86,18 @@ export function StatementImportScreen({ onClose }: { onClose: () => void }) {
 
   const liveCategories = useMemo(() => (categories ?? []).filter((c) => !c.archived && !c.system), [categories])
   const categoryById = useMemo(() => new Map((categories ?? []).map((c) => [c.id, c])), [categories])
+  const instrumentOwnerOf = (accountId: string | null, cardId: string | null) =>
+    (accounts ?? []).find((a) => a.id === accountId)?.owner_id ?? (cards ?? []).find((c) => c.id === cardId)?.owner_id ?? null
+  // Who bears it: an explicit choice on screen, else the CSV's Owner column, else whoever owns the card or account.
+  const whoOf = (r: StatementRow): string => {
+    const chosen = whoOverride.get(r.line)
+    if (chosen) return chosen
+    const hint = r.ownerHint.toLowerCase()
+    if (hint === 'shared' || hint === 'แชร์') return SHARED
+    const named = members.find((m) => m.display_name.toLowerCase() === hint)
+    if (named) return named.id
+    return instrumentOwnerOf(r.fromAccountId, r.fromCardId) ?? self.id
+  }
   const instrumentName = (accountId: string | null, cardId: string | null) =>
     (accounts ?? []).find((a) => a.id === accountId)?.name ?? (cards ?? []).find((c) => c.id === cardId)?.name ?? '—'
 
@@ -93,8 +144,14 @@ export function StatementImportScreen({ onClose }: { onClose: () => void }) {
   async function apply() {
     setApplying(true)
     try {
-      const result = await applyStatementRows(householdId, toApply, (id) => categoryById.get(id)?.kind ?? null)
+      const result = await applyStatementRows(householdId, toApply, {
+        categoryKindOf: (id) => categoryById.get(id)?.kind ?? null,
+        instrumentOwnerOf,
+        memberIds: members.map((m) => m.id),
+        whoOf,
+      })
       await queryClient.invalidateQueries({ queryKey: ['transactions', householdId] })
+      clearDraft()
       toast.success(`Imported ${result.inserted}, confirmed ${result.matched} matches`)
       onClose()
     } catch (e) {
@@ -108,11 +165,24 @@ export function StatementImportScreen({ onClose }: { onClose: () => void }) {
     <div className="flex h-full flex-col">
       <div className="flex flex-wrap items-center gap-2 border-b p-2">
         {(['review', 'new', 'imported'] as Tab[]).map((t) => (
-          <Button key={t} size="sm" variant={tab === t ? 'default' : 'ghost'} onClick={() => { setTab(t); setSelected(new Set()) }}>
+          <Button key={t} size="sm" variant={tab === t ? 'default' : 'ghost'} onClick={() => { setTab(t); setSelected(new Set()); setShown(PAGE) }}>
             {TAB_LABEL[t]} ({rows.filter((r) => TAB_OF[r.status] === t).length})
           </Button>
         ))}
         <div className="ml-auto flex items-center gap-2">
+          <Button
+            size="sm"
+            variant="ghost"
+            onClick={() => {
+              clearDraft()
+              setCsvRows(null)
+              setAccepted(new Set())
+              setCategoryOverride(new Map())
+              setWhoOverride(new Map())
+            }}
+          >
+            Start over
+          </Button>
           <span className="text-xs text-muted-foreground">{toApply.length} to apply</span>
           <Button size="sm" disabled={!toApply.length || applying} onClick={apply}>
             {applying ? 'Applying…' : 'Apply'}
@@ -130,6 +200,21 @@ export function StatementImportScreen({ onClose }: { onClose: () => void }) {
           <span className="text-muted-foreground">{selectedLines.length} selected:</span>
           <Button size="sm" variant="outline" disabled={!selectedLines.length} onClick={() => update(selectedLines, true)}>Accept</Button>
           <Button size="sm" variant="outline" disabled={!selectedLines.length} onClick={() => update(selectedLines, false)}>Skip</Button>
+          <select
+            className="h-8 rounded-md border bg-background px-2"
+            disabled={!selectedLines.length}
+            value=""
+            onChange={(e) =>
+              e.target.value &&
+              setWhoOverride((prev) => new Map([...prev, ...selectedLines.map((l) => [l, e.target.value] as const)]))
+            }
+          >
+            <option value="">Set who…</option>
+            {members.map((m) => (
+              <option key={m.id} value={m.id}>{m.display_name}</option>
+            ))}
+            {members.length > 1 && <option value={SHARED}>Shared (split evenly)</option>}
+          </select>
           <select
             className="h-8 rounded-md border bg-background px-2"
             disabled={!selectedLines.length}
@@ -160,11 +245,12 @@ export function StatementImportScreen({ onClose }: { onClose: () => void }) {
               <th className="p-2">Description</th>
               <th className="p-2 text-right">Amount</th>
               <th className="p-2">Category</th>
+              <th className="p-2">Who</th>
               <th className="p-2">Status</th>
             </tr>
           </thead>
           <tbody>
-            {visible.map((raw) => {
+            {visible.slice(0, shown).map((raw) => {
               const r = effective(raw)
               const isAccepted = accepted.has(r.line) && actionable(r)
               return (
@@ -208,6 +294,22 @@ export function StatementImportScreen({ onClose }: { onClose: () => void }) {
                     )}
                   </td>
                   <td className="p-2">
+                    {r.kind === 'transfer' || r.status === 'match' || !actionable(r) ? (
+                      '—'
+                    ) : (
+                      <select
+                        className="h-7 rounded border bg-background px-1"
+                        value={whoOf(r)}
+                        onChange={(e) => setWhoOverride((prev) => new Map(prev).set(r.line, e.target.value))}
+                      >
+                        {members.map((m) => (
+                          <option key={m.id} value={m.id}>{m.display_name}</option>
+                        ))}
+                        {r.kind === 'expense' && members.length > 1 && <option value={SHARED}>Shared (split evenly)</option>}
+                      </select>
+                    )}
+                  </td>
+                  <td className="p-2">
                     {r.status === 'error' && <span className="text-destructive">{r.issue}</span>}
                     {r.status === 'imported' && <span className="text-muted-foreground">Already imported</span>}
                     {actionable(r) && (
@@ -223,6 +325,13 @@ export function StatementImportScreen({ onClose }: { onClose: () => void }) {
           </tbody>
         </table>
         {!visible.length && <p className="p-4 text-sm text-muted-foreground">Nothing here.</p>}
+        {visible.length > shown && (
+          <div className="p-3 text-center">
+            <Button size="sm" variant="outline" onClick={() => setShown((n) => n + PAGE)}>
+              Show {Math.min(PAGE, visible.length - shown)} more ({visible.length - shown} left)
+            </Button>
+          </div>
+        )}
       </div>
     </div>
   )

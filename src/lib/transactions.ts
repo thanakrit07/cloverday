@@ -73,6 +73,8 @@ function toRow(householdId: string, input: TransactionInput) {
 export function useTransactions(householdId: string, range: { start: string; end: string }) {
   return useQuery({
     queryKey: ['transactions', householdId, range.start, range.end],
+    // An empty bound (a screen with nothing to show yet) is a 400 from PostgREST, not "no rows".
+    enabled: Boolean(range.start && range.end),
     queryFn: async () => {
       const { data, error } = await supabase
         .from('v_transactions')
