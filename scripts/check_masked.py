@@ -23,7 +23,7 @@ PH = r"⟦P\d+⟧"
 CHECKS = [
     # นามสกุลหลัง placeholder ของชื่อ ("คุณ ⟦P2⟧ <นามสกุล>") — ตัวที่เคยหลุดเพราะ ์ หาย
     ("name after คุณ/ชื่อผู้ถือบัตร", re.compile(rf"(?:คุณ|ชื่อผู้?ถือบัตร)\s*{PH}\s+([ก-๙A-Za-z]{{2,}})")),
-    ("transfer counterparty", re.compile(r"(?:โอนไป|จาก)\s+[A-Z]{2,6}\s+X\d{3,4}\s+(.*\S)")),
+    ("transfer counterparty", re.compile(r"(?:โอนไป|จาก)\s+(?:[A-Z]{2,6}\s+)?X\w{3,4}\s+(?!บจก|บมจ|หจก|บริษัท)(.*\S)")),
     ("English title + name", re.compile(r"(?<![A-Za-z])(?:MR|MRS|MS|MISS)\.?\s+([A-Za-z]{2,}.*)", re.I)),
     ("Thai title + name", re.compile(r"(?:นางสาว|นาย|นาง|น\.ส\.)\s*([ก-๙]{2,}.*)")),
     ("unmasked 8+ digit number", re.compile(r"\b(?!\d{1,2}[-/]\d{1,2}[-/]\d{2,4}\b)(\d(?:[\s-]?\d){7,})\b")),

@@ -62,12 +62,14 @@ NAME_TAIL = r"[ก-๙A-Za-z\.]+(?:\s+[ก-๙A-Za-z\.]+){0,3}"
 # เลขบัญชี/บัตร: ตัวเลขติดกัน 8 หลักขึ้นไป (เว้นวรรค/ขีดคั่นได้)
 # ไม่นับสิ่งที่ขึ้นต้นเหมือนวันที่ — statement กสิกรขึ้นบรรทัดด้วย "01-04-26 10:01"
 # ซึ่งวันที่+ชั่วโมงรวมกันได้ 8 หลัก เลยเคยถูก mask เป็นเลขบัญชีจนวันที่หายหมด
-ACCOUNT_RE = re.compile(r"\b(?!\d{1,2}[-/]\d{1,2}[-/]\d{2,4}\b)\d(?:[\s-]?\d){7,}\b")
+ACCOUNT_RE = re.compile(r"\b(?!\d{1,2}[-/]\d{1,2}[-/]\d{2,4}(?![\d/-]))\d(?:[\s-]?\d){7,}\b")
 
 # รายการโอนของกสิกร: "โอนไป SCB X1234 <ชื่อ>" / "จาก BAY X1234 <ชื่อ>" — ทุกอย่าง
 # หลังเลขบัญชีท้าย 4 ตัวคือชื่อคู่โอน (ไทยหรืออังกฤษ มีหรือไม่มีคำนำหน้าก็ได้
 # และธนาคารมักตัดชื่อยาวให้สั้นแล้วต่อท้ายด้วย "++" จึงจับคู่กับชื่อเต็มไม่ได้)
-TRANSFER_PARTY_RE = re.compile(r"((?:โอนไป|จาก)\s+[A-Z]{2,6}\s+X\d{3,4}\s+)(\S.*?)\s*$", re.MULTILINE)
+# ธนาคารเดียวกัน (กสิกร→กสิกร) ไม่มีรหัสธนาคาร: "โอนไป X2123 <ชื่อ>" — รหัสธนาคารจึง optional
+# นิติบุคคล (บจก./บมจ./หจก./บริษัท) ไม่ใช่ข้อมูลส่วนบุคคลและช่วยเดาหมวด จึงไม่ mask
+TRANSFER_PARTY_RE = re.compile(r"((?:โอนไป|จาก)\s+(?:[A-Z]{2,6}\s+)?X\w{3,4}\s+)(?!บจก|บมจ|หจก|บริษัท)(\S.*?)\s*$", re.MULTILINE)
 # ข้อความไทยที่ดึงจาก PDF มักทำวรรณยุกต์/การันต์หาย (ลาดพร้าว → ลาดพราว, ใจดี์ → ใจดี)
 # และแยก ำ เป็น ํ+า — ชื่อที่จะ mask จึงต้องไม่บังคับให้มีเครื่องหมายเหล่านี้
 THAI_MARKS = "\u0e47\u0e48\u0e49\u0e4a\u0e4b\u0e4c\u0e4d\u0e4e"
@@ -184,6 +186,9 @@ class Masker:
 
     def mask_accounts(self, text: str) -> str:
         def repl(m):
+            # "…7,310.20 01-04-26 10:34": a balance's cents run into a date — not an account number
+            if re.search(r"(?<![\d-])\d{2}-\d{2}-\d{2}(?![\d-])", m.group(0)):
+                return m.group(0)
             digits = re.sub(r"[\s-]", "", m.group(0))
             ph = self._placeholder_for(digits)
             return ph
@@ -218,20 +223,35 @@ def file_hash(path: str) -> str:
         return hashlib.sha256(f.read()).hexdigest()
 
 
-def open_pdf(pdf_path: str, password):
+def _try_open(pdf_path: str, password):
     try:
         pdf_ctx = pdfplumber.open(pdf_path, password=password)
         pdf_ctx.pages  # เข้าถึงจริงเพื่อบังคับให้ decrypt error โผล่ตอนนี้ ถ้าจะเกิด
         return pdf_ctx
     except Exception:
-        # ไม่พึ่งข้อความ error (บาง backend คืนข้อความว่างเปล่า) — ลองถามรหัสแล้วเปิดใหม่แทน
-        password = getpass.getpass(
-            f"เปิด {os.path.basename(pdf_path)} ไม่ได้ (อาจมีรหัสผ่าน) "
-            "กรุณาใส่รหัส (พิมพ์แล้วไม่แสดงบนจอ): "
-        )
-        pdf_ctx = pdfplumber.open(pdf_path, password=password)
-        pdf_ctx.pages
-        return pdf_ctx
+        # ไม่พึ่งข้อความ error (บาง backend คืนข้อความว่างเปล่า) — ถือว่าเปิดไม่ได้
+        return None
+
+
+def open_pdf(pdf_path: str, known_passwords: List[str]):
+    """ลองไม่มีรหัส แล้วลองรหัสที่ใช้ได้มาแล้วในรอบนี้ (ธนาคารเดียวกันมักใช้รหัสเดียวกัน)
+    ถ้ายังไม่ได้ค่อยถาม — ผิดก็ถามใหม่เรื่อยๆ กด Enter ว่างๆ เพื่อข้ามไฟล์นี้
+    รหัสเก็บแค่ในหน่วยความจำระหว่างรันเท่านั้น ไม่เขียนลงไฟล์"""
+    for password in [None, *known_passwords]:
+        pdf_ctx = _try_open(pdf_path, password)
+        if pdf_ctx is not None:
+            return pdf_ctx
+    name = os.path.basename(pdf_path)
+    prompt = f"{name} มีรหัสผ่าน — ใส่รหัส (ไม่แสดงบนจอ, Enter ว่าง = ข้ามไฟล์นี้): "
+    while True:
+        password = getpass.getpass(prompt)
+        if not password:
+            return None
+        pdf_ctx = _try_open(pdf_path, password)
+        if pdf_ctx is not None:
+            known_passwords.append(password)
+            return pdf_ctx
+        prompt = f"รหัสไม่ถูก — ลองใหม่สำหรับ {name} (Enter ว่าง = ข้าม): "
 
 
 def resolve_owner_names(raw_dir: str) -> List[str]:
@@ -282,6 +302,7 @@ def cmd_mask(args):
     owner_names = sorted(owner_names, key=len, reverse=True)
 
     total_new = 0
+    known_passwords: List[str] = [args.password] if args.password else []
     for pdf_path in args.pdf_path:
         h = file_hash(pdf_path)
         prev = masker.processed_files.get(pdf_path)
@@ -293,7 +314,10 @@ def cmd_mask(args):
             print(f"⏭  {pdf_path} — ไม่เปลี่ยนแปลง ข้าม (ใช้ --force ถ้าอยากทำใหม่)")
             continue
 
-        pdf_ctx = open_pdf(pdf_path, args.password)
+        pdf_ctx = open_pdf(pdf_path, known_passwords)
+        if pdf_ctx is None:
+            print(f"⏭  {pdf_path} — ข้าม (ไม่ได้ใส่รหัส)")
+            continue
         lines = []
         with pdf_ctx as pdf:
             for page in pdf.pages:
