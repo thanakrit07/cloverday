@@ -164,9 +164,33 @@ export function installmentChargeInCycle(
   return total
 }
 
+// A card charge usually posts a day or two after it was made, and its posting
+// date — not the purchase date — decides which bill it lands on. Rows a
+// statement has vouched for carry `posted_date` (ADR-0017); hand-entered rows
+// don't until one is confirmed against a statement line, so they fall back to
+// the purchase date.
+export function cycleDate(t: { date: string; posted_date?: string | null }): string {
+  return t.posted_date ?? t.date
+}
+
+export function inCycle(t: { date: string; posted_date?: string | null }, cycle: Cycle): boolean {
+  const d = cycleDate(t)
+  return d >= cycle.start && d <= cycle.end
+}
+
+// Transactions are fetched by purchase date, so a cycle's fetch has to reach
+// back far enough to catch a purchase made before the cycle that posted inside
+// it. ponytail: fixed 7-day lag; widen if a statement ever posts later than that.
+export const POSTING_LAG_DAYS = 7
+
+export function cycleFetchRange(cycle: Cycle): { start: string; end: string } {
+  return { start: addDays(cycle.start, -POSTING_LAG_DAYS), end: cycle.end }
+}
+
 export interface TransactionChargeLike {
   amount: number
   date: string
+  posted_date?: string | null
   kind: 'income' | 'expense' | 'transfer'
   to_card_id: string | null
   confirmed: boolean
@@ -254,7 +278,7 @@ export function cycleBill({
 }: CycleBillInput): number {
   const txnTotal = transactions
     .filter((t) => t.confirmed)
-    .filter((t) => t.date >= cycle.start && t.date <= cycle.end)
+    .filter((t) => inCycle(t, cycle))
     .filter((t) => !(t.kind === 'transfer' && t.to_card_id === cardId))
     .reduce((sum, t) => sum + t.amount, 0)
 

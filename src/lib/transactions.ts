@@ -30,6 +30,8 @@ export interface Transaction {
   source_key: string | null
   /** D22: set when this transaction is one line of a Receipt (ADR-0015). */
   receipt_id: string | null
+  /** When a statement says the bank posted it; decides a card row's billing cycle (ADR-0017). */
+  posted_date: string | null
 }
 
 export interface TransactionInput {
@@ -75,7 +77,7 @@ export function useTransactions(householdId: string, range: { start: string; end
       const { data, error } = await supabase
         .from('v_transactions')
         .select(
-          'id, household_id, date, kind, category_id, category_kind, description, amount, owner_id, from_account_id, from_card_id, to_account_id, to_card_id, note, confirmed, source, source_key, receipt_id',
+          'id, household_id, date, kind, category_id, category_kind, description, amount, owner_id, from_account_id, from_card_id, to_account_id, to_card_id, note, confirmed, source, source_key, receipt_id, posted_date',
         )
         .eq('household_id', householdId)
         .gte('date', range.start)
@@ -128,7 +130,7 @@ export function useUnconfirmedTransactions(householdId: string) {
       const { data, error } = await supabase
         .from('v_transactions')
         .select(
-          'id, household_id, date, kind, category_id, category_kind, description, amount, owner_id, from_account_id, from_card_id, to_account_id, to_card_id, note, confirmed, source, source_key, receipt_id',
+          'id, household_id, date, kind, category_id, category_kind, description, amount, owner_id, from_account_id, from_card_id, to_account_id, to_card_id, note, confirmed, source, source_key, receipt_id, posted_date',
         )
         .eq('household_id', householdId)
         .eq('confirmed', false)

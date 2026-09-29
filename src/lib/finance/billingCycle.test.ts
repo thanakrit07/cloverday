@@ -261,6 +261,18 @@ describe('cycleBill', () => {
     expect(cycleBill({ cycle, cardId, transactions, installments: [] })).toBe(800)
   })
 
+  it('places a statement-vouched row by its posting date, not its purchase date', () => {
+    const transactions = [
+      // Bought on the previous cycle's statement day, posted inside this one.
+      { amount: 120, date: '2026-01-05', posted_date: '2026-01-06', kind: 'expense' as const, to_card_id: null, confirmed: true },
+      // Bought on this cycle's statement day, posts onto the next bill.
+      { amount: 70, date: '2026-02-05', posted_date: '2026-02-06', kind: 'expense' as const, to_card_id: null, confirmed: true },
+      // Hand-entered, no statement yet: purchase date decides.
+      { amount: 30, date: '2026-02-05', posted_date: null, kind: 'expense' as const, to_card_id: null, confirmed: true },
+    ]
+    expect(cycleBill({ cycle, cardId, transactions, installments: [] })).toBe(150)
+  })
+
   it('excludes unconfirmed rows — they are excluded from every total in the app (§6.6), not just the callers that remember to filter', () => {
     const transactions = [
       { amount: 500, date: '2026-01-10', kind: 'expense' as const, to_card_id: null, confirmed: true },
