@@ -364,11 +364,16 @@ def cmd_unmask(args):
         missing.add(ph)
         return ph
 
-    result = PLACEHOLDER_RE.sub(repl, content)
-
     os.makedirs(os.path.dirname(args.out) or ".", exist_ok=True)
-    with open(args.out, "w", encoding="utf-8") as f:
-        f.write(result)
+    if args.in_path.lower().endswith(".csv"):
+        # ทีละช่อง ไม่ใช่ทั้งไฟล์ — ค่าจริงอาจมี , หรือ " ซึ่งถ้าแทนที่ดิบๆ จะทำให้คอลัมน์เลื่อน
+        import csv, io
+        rows = [[PLACEHOLDER_RE.sub(repl, cell) for cell in row] for row in csv.reader(io.StringIO(content))]
+        with open(args.out, "w", encoding="utf-8", newline="") as f:
+            csv.writer(f).writerows(rows)
+    else:
+        with open(args.out, "w", encoding="utf-8") as f:
+            f.write(PLACEHOLDER_RE.sub(repl, content))
 
     print(f"unmask เสร็จ เขียนไปที่ {args.out}")
     if missing:

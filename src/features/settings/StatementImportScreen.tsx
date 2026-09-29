@@ -110,7 +110,13 @@ export function StatementImportScreen({ onClose }: { onClose: () => void }) {
           accept=".csv,text/csv"
           onChange={async (e) => {
             const file = e.target.files?.[0]
-            if (file) setCsvRows(parseCsvText(await file.text()).rows)
+            if (!file) return
+            try {
+              setCsvRows(parseCsvText(await file.text()).rows)
+            } catch (err) {
+              toast.error(`Couldn't read this CSV: ${err instanceof Error ? err.message : String(err)}`)
+            }
+            e.target.value = '' // picking the same file again should still fire onChange
           }}
         />
       </div>
