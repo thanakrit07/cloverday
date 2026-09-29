@@ -15,6 +15,9 @@ import { cn } from '@/lib/utils'
 // template/parsing code Import uses. Bundling that into the main chunk
 // would tax every app open for a settings screen most sessions never
 // visit — a dynamic import keeps it out until someone actually taps in.
+const StatementImportScreen = lazy(() =>
+  import('@/features/settings/StatementImportScreen').then((m) => ({ default: m.StatementImportScreen })),
+)
 const ImportScreen = lazy(() => import('@/features/settings/ImportScreen').then((m) => ({ default: m.ImportScreen })))
 
 const THEMES = [
@@ -54,6 +57,7 @@ export function SettingsScreen() {
   const { self, members } = useHousehold()
   const [categoriesOpen, setCategoriesOpen] = useState(false)
   const [importOpen, setImportOpen] = useState<'full' | 'transactions' | null>(null)
+  const [statementOpen, setStatementOpen] = useState(false)
   const [passwordOpen, setPasswordOpen] = useState(false)
 
   // Clear the local cache first: signing out re-renders into the auth screen,
@@ -93,6 +97,9 @@ export function SettingsScreen() {
           <Button variant="outline" onClick={() => setImportOpen('full')}>
             Import
           </Button>
+          <Button variant="outline" onClick={() => setStatementOpen(true)}>
+            Import statement
+          </Button>
         </div>
       </section>
 
@@ -125,6 +132,14 @@ export function SettingsScreen() {
         <FullScreenPage title={importOpen === 'transactions' ? 'Bulk add transactions' : 'Import'} onClose={() => setImportOpen(null)}>
           <Suspense fallback={<p className="p-4 text-sm text-muted-foreground">Loading…</p>}>
             <ImportScreen onClose={() => setImportOpen(null)} mode={importOpen} />
+          </Suspense>
+        </FullScreenPage>
+      )}
+
+      {statementOpen && (
+        <FullScreenPage title="Import statement" onClose={() => setStatementOpen(false)}>
+          <Suspense fallback={<p className="p-4 text-sm text-muted-foreground">Loading…</p>}>
+            <StatementImportScreen onClose={() => setStatementOpen(false)} />
           </Suspense>
         </FullScreenPage>
       )}

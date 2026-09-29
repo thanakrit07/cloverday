@@ -74,9 +74,19 @@ statements/staging/               ← ใช้งานได้ปกติ �
      เท่านั้น (ไม่ต้องสร้าง category ใหม่) ถ้าเดาไม่ออกใช้ "Other"
    - เขียนผลลัพธ์เป็น CSV fragment ที่ `statements/staging/staged/<name>.csv`
      คอลัมน์ตรงกับ schema เดิม:
-     `Date,Kind,Amount,Category,Account or card,To account or card,Note,Details,Owner`
-     (Date รูปแบบ `DD/MM/YYYY`, ค.ศ.) — Note ใส่คำอธิบายที่ยังมี placeholder
-     ได้ตามปกติ อย่าพยายามแทนที่ placeholder เอง
+     `Date,Posted date,Kind,Amount,Category,Account or card,To account or card,Note,Details,Owner`
+     (วันที่รูปแบบ `DD/MM/YYYY`, ค.ศ.) — **Date = วันที่เกิดรายการ (วันรูด)**,
+     **Posted date = วันที่บันทึก** (มีเฉพาะ statement บัตร, ไม่มีเว้นว่าง) —
+     Note ใส่คำอธิบายตามที่อยู่ในไฟล์ ห้ามตัด/แก้ (เป็นส่วนหนึ่งของ `source_key`)
+     และอย่าพยายามแทนที่ placeholder เอง
+   - **กฎ ADR-0019 (ห้ามเดาเอง):**
+     - ยอดเป็นบวกเสมอ; คืนเงิน = `income` หมวด `Refund`
+     - โอนระหว่างบัญชีตัวเอง บันทึกจากฝั่งผู้จ่าย (statement ธนาคาร) และข้าม
+       บรรทัด "payment received" ใน statement บัตร — ยกเว้นช่วงที่ไม่มี
+       statement ธนาคาร ให้ใช้ฝั่งบัตร (ต้นทาง "Easy App" = บัญชี `SCB`)
+     - บรรทัดงวดผ่อน/IPP Interest ที่มีแผนผ่อนในแอปแล้ว (เช็คจากตาราง
+       `installments`) → ข้าม; ถ้ายังไม่มีแผน → เขียนแถวโดยใส่ Details =
+       `needs-installment-plan` (หน้าตรวจจะแสดงแต่ไม่ import)
    - อัปเดต `statements/staging/processed_log.json`:
      `{ "<filename>.txt": { "hash": "...", "rows": N, "account": "..." } }`
 
