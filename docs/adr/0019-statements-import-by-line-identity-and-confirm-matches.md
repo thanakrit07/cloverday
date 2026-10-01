@@ -1,5 +1,7 @@
 # Statements import by line identity, and matches are confirmed, not guessed
 
+> **Amended by [ADR-0020](./0020-statements-are-read-in-the-browser-and-the-app-remembers-who-is-who.md):** the statement text is stored in `description`, not `note`, and the statement is read in the browser instead of by the masking scripts mentioned below. The line identity, the review screen and the suggest-then-confirm matching stand.
+
 [ADR-0014](./0014-bulk-import-is-in-app-insert-only-and-has-no-heuristics.md)
 designed import for one event: moving the old sheet into an empty household.
 Its key is the CSV row number, and a second run fails on purpose.
