@@ -67,7 +67,7 @@ create policy member_all on counterparties
 create or replace view v_category_hints with (security_invoker = true) as
   select
     household_id,
-    lower(regexp_replace(btrim(description), '\s+', ' ', 'g')) as text_key,
+    lower(btrim(regexp_replace(description, '\s+', ' ', 'g'))) as text_key,
     category_id,
     count(*) as uses
   from transactions

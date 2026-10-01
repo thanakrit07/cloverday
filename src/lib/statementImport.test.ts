@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildStatementRows, NEEDS_PLAN, type StatementContext } from './statementImport'
+import { buildStatementRows, NEEDS_PLAN, normalizeStatementText, type StatementContext } from './statementImport'
 
 const ctx = (existing: StatementContext['existing'] = []): StatementContext => ({
   accounts: [{ id: 'acc-kbank', name: 'กสิกร' }],
@@ -68,5 +68,12 @@ describe('buildStatementRows', () => {
     const [r] = buildStatementRows([row({ Kind: 'transfer', Category: '', 'Account or card': 'กสิกร', 'To account or card': 'KTC' })], ctx())
     expect(r).toMatchObject({ status: 'new', fromAccountId: 'acc-kbank', toCardId: 'card-ktc', categoryId: null })
     expect(r.sourceKey).toContain('acc-kbank>card-ktc')
+  })
+})
+
+describe('normalizeStatementText', () => {
+  it('collapses whitespace, trims and lower-cases, the same as v_category_hints', () => {
+    expect(normalizeStatementText('  DEMO  Cafe\tBANGKOK \n')).toBe('demo cafe bangkok')
+    expect(normalizeStatementText('ร้าน   ทดสอบ')).toBe('ร้าน ทดสอบ')
   })
 })

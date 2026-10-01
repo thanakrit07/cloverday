@@ -9,6 +9,15 @@ import type { TransactionKind, Transaction } from './transactions'
 import type { Category } from './categories'
 import { computeShareRows } from './transactionShares'
 
+/**
+ * The key a description is remembered and looked up by. The same rule as
+ * v_category_hints and counterparties.name_key in the database (migration
+ * 0034): whitespace collapsed, trimmed, lower-cased. Change one, change both.
+ */
+export function normalizeStatementText(text: string): string {
+  return text.replace(/\s+/g, ' ').trim().toLowerCase()
+}
+
 export type RowStatus = 'error' | 'imported' | 'match' | 'review' | 'new'
 
 export interface StatementRow {
