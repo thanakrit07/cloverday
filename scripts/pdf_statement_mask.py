@@ -185,15 +185,23 @@ class Masker:
         return STREET_RE.sub(street, HOUSE_NO_RE.sub(house, text))
 
     def mask_accounts(self, text: str) -> str:
-        def repl(m):
-            # "…7,310.20 01-04-26 10:34": a balance's cents run into a date — not an account number
-            if re.search(r"(?<![\d-])\d{2}-\d{2}-\d{2}(?![\d-])", m.group(0)):
-                return m.group(0)
-            digits = re.sub(r"[\s-]", "", m.group(0))
-            ph = self._placeholder_for(digits)
-            return ph
+        # A dd-mm-yy date (and its hh:mm) is fenced off first, so a number that
+        # merely sits next to one is still masked while the date itself survives —
+        # KBank runs a page's carried-forward cents straight into the next date.
+        fenced: List[str] = []
 
-        return ACCOUNT_RE.sub(repl, text)
+        def fence(m):
+            fenced.append(m.group(0))
+            return f"\x00{len(fenced) - 1}\x00"
+
+        text = re.sub(r"(?<![\d-])\d{2}-\d{2}-\d{2}(?![\d-])(?: \d{2}:\d{2})?", fence, text)
+
+        def repl(m):
+            digits = re.sub(r"[\s-]", "", m.group(0))
+            return self._placeholder_for(digits)
+
+        text = ACCOUNT_RE.sub(repl, text)
+        return re.sub(r"\x00(\d+)\x00", lambda m: fenced[int(m.group(1))], text)
 
     def save(self, path: str):
         with open(path, "w", encoding="utf-8") as f:
