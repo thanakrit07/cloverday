@@ -28,7 +28,8 @@ export interface StatementRow {
   postedDate: string | null
   kind: TransactionKind
   amount: number
-  note: string
+  /** The statement's own text for the line, kept in `description` (ADR-0020); `note` stays the household's. */
+  description: string
   categoryId: string | null
   fromAccountId: string | null
   fromCardId: string | null
@@ -95,7 +96,8 @@ export function buildStatementRows(rows: Record<string, string>[], ctx: Statemen
     if (!['income', 'expense', 'transfer'].includes(kind)) issues.push(`Invalid kind "${raw['Kind']}"`)
     const amount = parseAmount(raw['Amount'] ?? '')
     if (amount == null || amount <= 0) issues.push('Amount must be positive (a refund is income under Refund)')
-    const note = (raw['Note'] ?? '').trim()
+    // 'Note' is the old pipeline's name for the same column.
+    const description = (raw['Description'] ?? raw['Note'] ?? '').trim()
 
     const from = instrument(raw['Account or card'] ?? '')
     if (from.issue) issues.push(from.issue)
@@ -117,7 +119,7 @@ export function buildStatementRows(rows: Record<string, string>[], ctx: Statemen
     if ((raw['Details'] ?? '').trim() === NEEDS_PLAN) issues.unshift('Installment with no plan in the app — create the plan first')
 
     const instr = kind === 'transfer' ? `${from.accountId ?? from.cardId}>${to.accountId ?? to.cardId}` : (from.accountId ?? from.cardId)
-    const base = `stmt:${instr}:${date}:${(amount ?? 0).toFixed(2)}:${hash(note)}`
+    const base = `stmt:${instr}:${date}:${(amount ?? 0).toFixed(2)}:${hash(description)}`
     const n = (seen.get(base) ?? 0) + 1
     seen.set(base, n)
     const sourceKey = `${base}:${n}`
@@ -151,7 +153,7 @@ export function buildStatementRows(rows: Record<string, string>[], ctx: Statemen
       postedDate,
       kind,
       amount: amount ?? 0,
-      note,
+      description,
       categoryId,
       fromAccountId: from.accountId,
       fromCardId: from.cardId,
@@ -196,13 +198,13 @@ export async function applyStatementRows(
       category_id: r.categoryId,
       category_kind: r.categoryId ? categoryKindOf(r.categoryId) : null,
       owner_id: ownerOf(r),
-      description: '',
       amount: r.amount,
       from_account_id: r.fromAccountId,
       from_card_id: r.fromCardId,
       to_account_id: r.toAccountId,
       to_card_id: r.toCardId,
-      note: r.note || null,
+      description: r.description,
+      note: null,
       source: 'import' as const,
       source_key: r.sourceKey,
     }))

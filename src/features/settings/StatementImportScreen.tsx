@@ -9,10 +9,12 @@ import { useCategories } from '@/lib/categories'
 import { addDays } from '@/lib/finance/billingCycle'
 import { formatBaht } from '@/lib/format'
 import { useHousehold } from '@/lib/HouseholdContext'
+import { useInstallments } from '@/lib/installments'
 import { parseCsvText } from '@/lib/import/parseCsv'
 import { applyStatementRows, buildStatementRows, SHARED, type StatementRow } from '@/lib/statementImport'
 import { useTransactions } from '@/lib/transactions'
 import { cn } from '@/lib/utils'
+import { StatementPdfSource, type StatementWarning } from './StatementPdfSource'
 
 type Tab = 'review' | 'new' | 'imported'
 const TAB_OF: Record<StatementRow['status'], Tab> = { error: 'review', match: 'review', review: 'review', new: 'new', imported: 'imported' }
@@ -27,6 +29,7 @@ interface Draft {
   accepted: number[]
   categoryOverride: [number, string][]
   whoOverride: [number, string][]
+  warnings?: StatementWarning[]
 }
 function loadDraft(): Draft | null {
   try {
@@ -52,6 +55,7 @@ export function StatementImportScreen({ onClose }: { onClose: () => void }) {
   const { data: accounts } = useAccounts(householdId)
   const { data: cards } = useCards(householdId)
   const { data: categories } = useCategories(householdId)
+  const { data: installments } = useInstallments(householdId)
   const [draft] = useState(loadDraft)
   const [csvRows, setCsvRows] = useState<Record<string, string>[] | null>(draft?.csvRows ?? null)
   const [tab, setTab] = useState<Tab>('review')
@@ -59,16 +63,18 @@ export function StatementImportScreen({ onClose }: { onClose: () => void }) {
   const [categoryOverride, setCategoryOverride] = useState<Map<number, string>>(new Map(draft?.categoryOverride))
   const [whoOverride, setWhoOverride] = useState<Map<number, string>>(new Map(draft?.whoOverride))
   const [shown, setShown] = useState(PAGE)
+  // Lines the reader could not read, and rows it could not place: shown, never dropped quietly.
+  const [warnings, setWarnings] = useState<StatementWarning[]>(draft?.warnings ?? [])
 
   useEffect(() => {
     if (!csvRows) return
-    const next: Draft = { csvRows, accepted: [...accepted], categoryOverride: [...categoryOverride], whoOverride: [...whoOverride] }
+    const next: Draft = { csvRows, accepted: [...accepted], categoryOverride: [...categoryOverride], whoOverride: [...whoOverride], warnings }
     try {
       sessionStorage.setItem(DRAFT_KEY, JSON.stringify(next))
     } catch {
       // storage full or blocked: the screen still works, it just won't survive a reload
     }
-  }, [csvRows, accepted, categoryOverride, whoOverride])
+  }, [csvRows, accepted, categoryOverride, whoOverride, warnings])
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [applying, setApplying] = useState(false)
 
@@ -102,23 +108,43 @@ export function StatementImportScreen({ onClose }: { onClose: () => void }) {
     (accounts ?? []).find((a) => a.id === accountId)?.name ?? (cards ?? []).find((c) => c.id === cardId)?.name ?? '—'
 
   if (!csvRows) {
+    // The plans the app already has, by the name of the card or account they sit on.
+    const plans = (installments ?? []).flatMap((i) => {
+      const instrument = (cards ?? []).find((c) => c.id === i.card_id)?.name ?? (accounts ?? []).find((a) => a.id === i.account_id)?.name
+      return instrument ? [{ instrument, total: i.total_periods, startDate: i.start_date }] : []
+    })
     return (
-      <div className="mx-auto max-w-2xl space-y-3 p-4 text-sm">
-        <p>Pick <code>statements/raw/final/transactions.csv</code> (after <code>npm run statements:unmask</code>). It is read on this device only; nothing is saved until you press Apply.</p>
-        <input
-          type="file"
-          accept=".csv,text/csv"
-          onChange={async (e) => {
-            const file = e.target.files?.[0]
-            if (!file) return
-            try {
-              setCsvRows(parseCsvText(await file.text()).rows)
-            } catch (err) {
-              toast.error(`Couldn't read this CSV: ${err instanceof Error ? err.message : String(err)}`)
-            }
-            e.target.value = '' // picking the same file again should still fire onChange
+      <div>
+        <StatementPdfSource
+          accounts={accounts ?? []}
+          cards={cards ?? []}
+          plans={plans}
+          onReady={(records, found) => {
+            setWarnings(found)
+            setCsvRows(records)
           }}
         />
+        <details className="mx-auto max-w-2xl p-4 text-sm">
+          <summary className="cursor-pointer text-muted-foreground">From the old pipeline (CSV)</summary>
+          <div className="space-y-3 pt-3">
+            <p>Pick <code>statements/raw/final/transactions.csv</code> (after <code>npm run statements:unmask</code>).</p>
+            <input
+              type="file"
+              accept=".csv,text/csv"
+              onChange={async (e) => {
+                const file = e.target.files?.[0]
+                if (!file) return
+                try {
+                  setWarnings([])
+                  setCsvRows(parseCsvText(await file.text()).rows)
+                } catch (err) {
+                  toast.error(`Couldn't read this CSV: ${err instanceof Error ? err.message : String(err)}`)
+                }
+                e.target.value = '' // picking the same file again should still fire onChange
+              }}
+            />
+          </div>
+        </details>
       </div>
     )
   }
@@ -169,6 +195,20 @@ export function StatementImportScreen({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="flex h-full flex-col">
+      {warnings.length > 0 && (
+        <details className="border-b border-destructive/40 bg-destructive/5 p-2 text-xs" open>
+          <summary className="cursor-pointer font-medium text-destructive">
+            {warnings.length} {warnings.length === 1 ? 'line was' : 'lines were'} not imported: they could not be read or placed
+          </summary>
+          <ul className="mt-2 max-h-40 space-y-1 overflow-auto">
+            {warnings.slice(0, 100).map((w, i) => (
+              <li key={i}>
+                <span className="text-muted-foreground">{w.source}:</span> {w.reason} — <span className="break-all">{w.text}</span>
+              </li>
+            ))}
+          </ul>
+        </details>
+      )}
       <div className="flex flex-wrap items-center gap-2 border-b p-2">
         {(['review', 'new', 'imported'] as Tab[]).map((t) => (
           <Button key={t} size="sm" variant={tab === t ? 'default' : 'ghost'} onClick={() => { setTab(t); setSelected(new Set()); setShown(PAGE) }}>
@@ -182,6 +222,7 @@ export function StatementImportScreen({ onClose }: { onClose: () => void }) {
             onClick={() => {
               clearDraft()
               setCsvRows(null)
+              setWarnings([])
               setAccepted(new Set())
               setCategoryOverride(new Map())
               setWhoOverride(new Map())
@@ -280,7 +321,7 @@ export function StatementImportScreen({ onClose }: { onClose: () => void }) {
                     {instrumentName(r.fromAccountId, r.fromCardId)}
                     {r.kind === 'transfer' && ` → ${instrumentName(r.toAccountId, r.toCardId)}`}
                   </td>
-                  <td className="max-w-64 truncate p-2" title={r.note}>{r.note}</td>
+                  <td className="max-w-64 truncate p-2" title={r.description}>{r.description}</td>
                   <td className={cn('whitespace-nowrap p-2 text-right tabular-nums', r.kind === 'income' && 'text-emerald-600')}>
                     {formatBaht(r.amount)}
                   </td>

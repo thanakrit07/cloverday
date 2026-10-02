@@ -35,6 +35,9 @@ export default defineConfig({
       },
       workbox: {
         globPatterns: ['**/*.{js,css,html,svg,png,woff2}'],
+        // pdf.js is only needed on Import statement, which needs the network to
+        // write anyway; keep ~430 KB out of what every device downloads at install.
+        globIgnores: ['assets/pdf-*.js'],
         navigateFallback: '/index.html',
         // Supabase data goes through React Query's persisted cache, not the
         // service worker — never serve auth/API responses from Cache Storage.
