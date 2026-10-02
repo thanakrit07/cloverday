@@ -10,6 +10,7 @@
     "preview": "vite preview",
     "typecheck": "tsc -b --noEmit",
     "test": "vitest run",
+    "prepare": "git config core.hooksPath scripts/hooks || true",
     "statements:mask": "python3 scripts/pdf_statement_mask.py mask statements/raw/statements/*.pdf",
     "statements:mask:force": "python3 scripts/pdf_statement_mask.py mask statements/raw/statements/*.pdf --force",
     "statements:shape": "tsx scripts/statement-shape.mjs",
