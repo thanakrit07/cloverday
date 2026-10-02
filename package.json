@@ -12,6 +12,7 @@
     "test": "vitest run",
     "statements:mask": "python3 scripts/pdf_statement_mask.py mask statements/raw/statements/*.pdf",
     "statements:mask:force": "python3 scripts/pdf_statement_mask.py mask statements/raw/statements/*.pdf --force",
+    "statements:shape": "tsx scripts/statement-shape.mjs",
     "statements:unmask": "python3 scripts/pdf_statement_mask.py unmask statements/staging/staged.csv"
   },
   "dependencies": {
@@ -32,6 +33,7 @@
     "exceljs": "^4.4.0",
     "lucide-react": "^1.26.0",
     "next-themes": "^0.4.6",
+    "pdfjs-dist": "^6.3.289",
     "radix-ui": "^1.6.5",
     "react": "^19.2.7",
     "react-day-picker": "^10.0.1",
