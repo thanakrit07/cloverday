@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { buildStatementRows, NEEDS_PLAN, normalizeStatementText, type StatementContext } from './statementImport'
+import { applyCounterparties, buildStatementRows, NEEDS_PLAN, normalizeStatementText, type CounterpartyRule, type StatementContext } from './statementImport'
 
 const ctx = (existing: StatementContext['existing'] = []): StatementContext => ({
   accounts: [{ id: 'acc-kbank', name: 'กสิกร' }],
@@ -75,5 +75,50 @@ describe('normalizeStatementText', () => {
   it('collapses whitespace, trims and lower-cases, the same as v_category_hints', () => {
     expect(normalizeStatementText('  DEMO  Cafe\tBANGKOK \n')).toBe('demo cafe bangkok')
     expect(normalizeStatementText('ร้าน   ทดสอบ')).toBe('ร้าน ทดสอบ')
+  })
+})
+
+describe('line keys stay put when the app learns something', () => {
+  it('keys a line by the statement it came from, so reclassifying it does not change the key', () => {
+    const asExpense = buildStatementRows([row({ Statement: 'KTC' })], ctx())[0]
+    const asRefunded = buildStatementRows([row({ Statement: 'KTC', Kind: 'income', Category: 'Refund' })], ctx())[0]
+    expect(asExpense.sourceKey.split(':').slice(0, 3)).toEqual(asRefunded.sourceKey.split(':').slice(0, 3))
+    // ...and a card payment recorded from a bank's side or the card's is one line of that card's statement
+    const viaBank = buildStatementRows([row({ Statement: 'KTC', 'Account or card': 'กสิกร' })], ctx())[0]
+    const viaCard = buildStatementRows([row({ Statement: 'KTC', 'Account or card': 'KTC' })], ctx())[0]
+    expect(viaBank.sourceKey).toBe(viaCard.sourceKey)
+  })
+
+  it('keys a transfer by its two ends and day, so both statements describing it make one', () => {
+    const fromBank = buildStatementRows([row({ Kind: 'transfer', Category: '', Statement: 'กสิกร', 'Account or card': 'กสิกร', 'To account or card': 'KTC', Note: 'โอนเงิน K PLUS ชำระ' })], ctx())[0]
+    const fromCard = buildStatementRows([row({ Kind: 'transfer', Category: '', Statement: 'KTC', 'Account or card': 'กสิกร', 'To account or card': 'KTC', Note: 'Payment-KBANK Mobile' })], ctx())[0]
+    expect(fromBank.sourceKey).toBe(fromCard.sourceKey)
+  })
+})
+
+describe('applyCounterparties', () => {
+  const memory = new Map<string, CounterpartyRule>([
+    ['demo person a', { role: 'own_account', target: 'KTC' }],
+    ['demo person b', { role: 'member', memberName: 'Demo Partner' }],
+    ['demo shop', { role: 'merchant', category: 'Food' }],
+  ])
+  const rec = (over: Record<string, string>) => ({ Kind: 'expense', Category: 'Other', 'Account or card': 'กสิกร', 'To account or card': '', Owner: '', Counterparty: '', ...over })
+
+  it('turns money sent to or received from the household\'s own account into a transfer', () => {
+    const [out, inn] = applyCounterparties([rec({ Counterparty: 'DEMO  Person A' }), rec({ Kind: 'income', Counterparty: 'demo person a' })], memory)
+    expect(out).toMatchObject({ Kind: 'transfer', Category: '', 'Account or card': 'กสิกร', 'To account or card': 'KTC' })
+    expect(inn).toMatchObject({ Kind: 'transfer', 'Account or card': 'KTC', 'To account or card': 'กสิกร' })
+  })
+
+  it('sets who bears a family member\'s expense, and a merchant\'s category', () => {
+    const [member, merchant, unknown] = applyCounterparties([rec({ Counterparty: 'Demo Person B' }), rec({ Counterparty: 'Demo Shop' }), rec({ Counterparty: 'Nobody Known' })], memory)
+    expect(member.Owner).toBe('Demo Partner')
+    expect(merchant.Category).toBe('Food')
+    expect(unknown).toEqual(rec({ Counterparty: 'Nobody Known' }))
+  })
+
+  it('keeps the same rows in the same order, and leaves transfers alone', () => {
+    const input = [rec({ Kind: 'transfer', Counterparty: 'demo person a' }), rec({ Counterparty: '' })]
+    expect(applyCounterparties(input, memory)).toEqual(input)
   })
 })

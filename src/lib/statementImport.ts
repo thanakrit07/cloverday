@@ -36,6 +36,8 @@ export interface StatementRow {
   toAccountId: string | null
   toCardId: string | null
   sourceKey: string
+  /** The name after the account on a transfer line, as printed; what the app is asked "who is this?" about. */
+  counterparty: string
   /** CSV's Owner column as written (a member's name, "shared", or blank). */
   ownerHint: string
   /** For 'match': the hand-entered row the screen suggests this line is. */
@@ -118,8 +120,18 @@ export function buildStatementRows(rows: Record<string, string>[], ctx: Statemen
 
     if ((raw['Details'] ?? '').trim() === NEEDS_PLAN) issues.unshift('Installment with no plan in the app — create the plan first')
 
-    const instr = kind === 'transfer' ? `${from.accountId ?? from.cardId}>${to.accountId ?? to.cardId}` : (from.accountId ?? from.cardId)
-    const base = `stmt:${instr}:${date}:${(amount ?? 0).toFixed(2)}:${hash(description)}`
+    // A line's key follows the statement it came from, not how the app has since
+    // classified it, so an overlapping statement imported after the household
+    // says who a name is still finds the line it already has. A transfer is the
+    // exception: both of its statements describe it differently, so it is keyed
+    // by its two ends and day alone and the second statement's copy is a duplicate.
+    const statement = raw['Statement'] ? instrument(raw['Statement']) : from
+    const key = (id: { accountId: string | null; cardId: string | null }) => id.accountId ?? id.cardId
+    const amountKey = (amount ?? 0).toFixed(2)
+    const base =
+      kind === 'transfer'
+        ? `stmt:transfer:${key(from)}>${key(to)}:${date}:${amountKey}`
+        : `stmt:${key(statement)}:${date}:${amountKey}:${hash(description)}`
     const n = (seen.get(base) ?? 0) + 1
     seen.set(base, n)
     const sourceKey = `${base}:${n}`
@@ -160,6 +172,7 @@ export function buildStatementRows(rows: Record<string, string>[], ctx: Statemen
       toAccountId: to.accountId,
       toCardId: to.cardId,
       sourceKey,
+      counterparty: (raw['Counterparty'] ?? '').trim(),
       ownerHint: (raw['Owner'] ?? '').trim(),
       matchId,
     }
@@ -241,4 +254,32 @@ export async function applyStatementRows(
     if (error) throw error
   }
   return { inserted: inserts.length, matched: matches.length }
+}
+
+/** What the household has said about a name on a transfer line. */
+export type CounterpartyRule =
+  | { role: 'own_account'; target: string }
+  | { role: 'member'; memberName: string }
+  | { role: 'merchant'; category: string }
+
+/**
+ * Applies what the app has been told about names to the staged records, before
+ * rows are built, so a transfer to the household's own other account is a
+ * transfer and not an expense, and the line keys never see the difference.
+ * Same length and order as the input: nothing is added or removed.
+ */
+export function applyCounterparties(records: Record<string, string>[], memory: ReadonlyMap<string, CounterpartyRule>): Record<string, string>[] {
+  return records.map((r) => {
+    const name = (r['Counterparty'] ?? '').trim()
+    const rule = name && r['Kind'] !== 'transfer' ? memory.get(normalizeStatementText(name)) : undefined
+    if (!rule) return r
+    if (rule.role === 'own_account') {
+      const mine = r['Account or card']
+      return r['Kind'] === 'income'
+        ? { ...r, Kind: 'transfer', Category: '', 'Account or card': rule.target, 'To account or card': mine }
+        : { ...r, Kind: 'transfer', Category: '', 'To account or card': rule.target }
+    }
+    if (rule.role === 'member') return r['Kind'] === 'expense' ? { ...r, Owner: rule.memberName } : r
+    return { ...r, Category: rule.category }
+  })
 }

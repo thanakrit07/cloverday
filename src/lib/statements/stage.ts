@@ -19,6 +19,10 @@ export interface StagedRow {
   text: string
   /** An installment the app has no plan for: shown in review, not imported. */
   needsPlan: boolean
+  /** The account or card whose statement this line came from; keeps the line's key stable. */
+  statement: string
+  /** The name after the account on a bank transfer line, as printed. */
+  counterparty: string | null
 }
 
 export interface StageIssue {
@@ -85,6 +89,12 @@ const KEYWORDS: [RegExp, string][] = [
   [/Cash Adv Fee/i, 'Cash advance fee'],
 ]
 
+/** "โอนไป SCB X1234 <name>" or "จาก X1234 <name>": the name, without the trailing +s. */
+const COUNTERPARTY = /(?:โอนไป|จาก)\s+(?:[A-Za-zก-๙]{2,12}\s+)?X\w{3,4}\s+(\S.*?)\s*\+*\s*$/
+function counterpartyOf(text: string): string | null {
+  return COUNTERPARTY.exec(text)?.[1].trim() || null
+}
+
 function guessCategory(text: string, hints: ReadonlyMap<string, string>): string {
   const remembered = hints.get(normalizeStatementText(text))
   if (remembered) return remembered
@@ -135,7 +145,7 @@ export function stageStatements(files: StageInput[], ctx: StageContext): { rows:
   for (const { instrument, result } of files) {
     for (const l of result.lines) {
       if (dropped.has(l)) continue
-      const base = { date: l.date, postedDate: l.postedDate, amount: l.amount, text: l.text }
+      const base = { date: l.date, postedDate: l.postedDate, amount: l.amount, text: l.text, statement: instrument, counterparty: result.layout === 'kbank' ? counterpartyOf(l.text) : null }
 
       if (result.layout === 'kbank') {
         if (l.direction === 'debit') {

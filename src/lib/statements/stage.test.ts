@@ -35,6 +35,24 @@ describe('bank statement rows', () => {
   })
 })
 
+describe('counterparty of a bank transfer line', () => {
+  const lines = parseKbank(
+    [
+      '01-04-26 ยอดยกมา 1,000.00',
+      '02-04-26 09:00 โอนเงิน 100.00 900.00 K PLUS โอนไป SCB X1111 DEMO PERSON A++',
+      '03-04-26 09:00 รับโอนเงิน 50.00 950.00 K PLUS จาก X2222 DEMO PERSON B',
+      '04-04-26 09:00 โอนเงิน 20.00 930.00 K PLUS โอนไป พร้อมเพย์ X3333 DEMO PERSON C++',
+      '05-04-26 09:00 ชำระเงิน 10.00 920.00 EDC/K SHOP/MYQR เพื่อชำระ Ref X4444 DEMO CAFE',
+    ],
+    ASOF,
+  )!
+  it('is the name after the account, without the trailing pluses; shops paid by QR have none', () => {
+    const { rows } = stageStatements([{ instrument: 'กสิกร', result: lines }], ctx())
+    expect(rows.map((r) => r.counterparty)).toEqual(['DEMO PERSON A', 'DEMO PERSON B', 'DEMO PERSON C', null])
+    expect(rows.every((r) => r.statement === 'กสิกร')).toBe(true)
+  })
+})
+
 describe('card statement rows', () => {
   const cardx = parseCardx(
     [

@@ -5,6 +5,7 @@ import { parseStatement } from '@/lib/statements/detect'
 import { stageStatements, type PlanRef, type StageInput } from '@/lib/statements/stage'
 import type { Layout, ParseResult } from '@/lib/statements/types'
 import { NEEDS_PLAN } from '@/lib/statementImport'
+import { coverageOf, describeCoverage, safeFileName, sha256Hex, type NewStatementFile, type StatementFile } from '@/lib/statementMemory'
 
 // ADR-0020: the statement PDFs are read right here, in this browser. The file,
 // its text and any password stay in memory on this device and are gone when the
@@ -20,7 +21,11 @@ interface Props {
   accounts: { id: string; name: string }[]
   cards: { id: string; name: string }[]
   plans: PlanRef[]
-  onReady: (records: Record<string, string>[], warnings: StatementWarning[]) => void
+  /** normalised description -> category name the household has used for it. */
+  hints: ReadonlyMap<string, string>
+  /** Files already uploaded, so a repeat is noticed. */
+  seen: StatementFile[]
+  onReady: (records: Record<string, string>[], warnings: StatementWarning[], files: NewStatementFile[]) => void
 }
 
 // ponytail: which of this household's accounts a layout can be a statement of.
@@ -38,13 +43,16 @@ interface FileState {
   /** Shown name: some banks put the full card number in the file name. */
   name: string
   status: 'reading' | 'ready' | 'unsupported' | 'skipped' | 'error'
+  sha256?: string
+  /** When the same file (by content) was uploaded before. */
+  seenBefore?: string
   message?: string
   result?: ParseResult
   candidates: string[]
   instrument?: string
 }
 
-const displayName = (name: string) => name.replace(/\d{12,}/g, '…')
+const displayName = safeFileName
 const dmy = (iso: string) => iso.split('-').reverse().join('/')
 const todayLocal = () => new Date().toLocaleDateString('sv-SE')
 
@@ -54,7 +62,7 @@ async function loadPdfjs(): Promise<PdfJs> {
   return pdfjs as unknown as PdfJs
 }
 
-export function StatementPdfSource({ accounts, cards, plans, onReady }: Props) {
+export function StatementPdfSource({ accounts, cards, plans, hints, seen, onReady }: Props) {
   const [files, setFiles] = useState<FileState[]>([])
   const [prompt, setPrompt] = useState<{ name: string; wrong: boolean; resolve: (p: string | null) => void } | null>(null)
   const [typed, setTyped] = useState('')
@@ -63,6 +71,10 @@ export function StatementPdfSource({ accounts, cards, plans, onReady }: Props) {
   const nextId = useRef(1)
 
   const existingNames = new Set([...accounts, ...cards].map((x) => x.name))
+  const coverage = [...accounts.map((a) => ({ name: a.name, id: a.id, key: 'account_id' as const })), ...cards.map((c) => ({ name: c.name, id: c.id, key: 'card_id' as const }))].flatMap((x) => {
+    const c = coverageOf(seen.filter((f) => f[x.key] === x.id))
+    return c ? [{ name: x.name, text: describeCoverage(c) }] : []
+  })
   const busy = files.some((f) => f.status === 'reading')
   const usable = files.filter((f) => f.status === 'ready' && f.instrument)
 
@@ -77,7 +89,11 @@ export function StatementPdfSource({ accounts, cards, plans, onReady }: Props) {
       const name = displayName(file.name)
       setFiles((prev) => [...prev, { id, name, status: 'reading', candidates: [] }])
       try {
-        const lines = await extractPdfLines(pdfjs, new Uint8Array(await file.arrayBuffer()), {
+        const bytes = new Uint8Array(await file.arrayBuffer())
+        const sha256 = await sha256Hex(bytes)
+        const before = seen.find((s) => s.sha256 === sha256)
+        patch(id, { sha256, seenBefore: before ? new Date(before.uploaded_at).toLocaleDateString('en-GB') : undefined })
+        const lines = await extractPdfLines(pdfjs, bytes, {
           known: known.current,
           ask: (wrong) => new Promise((resolve) => setPrompt({ name, wrong, resolve })),
         })
@@ -97,7 +113,7 @@ export function StatementPdfSource({ accounts, cards, plans, onReady }: Props) {
 
   function carryOn() {
     const inputs: StageInput[] = usable.map((f) => ({ instrument: f.instrument!, result: f.result! }))
-    const { rows, issues } = stageStatements(inputs, { plans, hints: new Map() })
+    const { rows, issues } = stageStatements(inputs, { plans, hints })
     const records = rows.map((r) => ({
       Date: dmy(r.date),
       'Posted date': r.postedDate ? dmy(r.postedDate) : '',
@@ -109,12 +125,16 @@ export function StatementPdfSource({ accounts, cards, plans, onReady }: Props) {
       Description: r.text,
       Details: r.needsPlan ? NEEDS_PLAN : '',
       Owner: '',
+      Statement: r.statement,
+      Counterparty: r.counterparty ?? '',
     }))
     const warnings: StatementWarning[] = [
       ...issues.map((i) => ({ source: i.instrument, reason: i.reason, text: i.text })),
       ...usable.flatMap((f) => f.result!.unreadable.map((u) => ({ source: f.instrument!, reason: u.reason, text: u.text }))),
     ]
-    onReady(records, warnings)
+    const idOf = (name: string) => ({ accountId: accounts.find((a) => a.name === name)?.id ?? null, cardId: cards.find((c) => c.name === name)?.id ?? null })
+    const meta: NewStatementFile[] = usable.flatMap((f) => (f.sha256 ? [{ fileName: f.name, sha256: f.sha256, periodStart: f.result!.periodStart, periodEnd: f.result!.periodEnd, ...idOf(f.instrument!), rowCount: f.result!.lines.length }] : []))
+    onReady(records, warnings, meta)
   }
 
   return (
@@ -122,6 +142,18 @@ export function StatementPdfSource({ accounts, cards, plans, onReady }: Props) {
       <p>
         Pick your statement PDFs (several at once is fine: a payment from a bank account is only recorded once when both statements are here). They are read on this device only and never uploaded; nothing is saved until you press Apply.
       </p>
+      {coverage.length > 0 && (
+        <div className="rounded-md border p-2 text-xs">
+          <p className="mb-1 font-medium">Statements uploaded so far</p>
+          <ul className="space-y-0.5">
+            {coverage.map((c) => (
+              <li key={c.name}>
+                <span className="text-muted-foreground">{c.name}:</span> {c.text}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       <input
         type="file"
         accept=".pdf,application/pdf"
@@ -179,6 +211,7 @@ export function StatementPdfSource({ accounts, cards, plans, onReady }: Props) {
               <div className="flex flex-wrap items-center gap-2">
                 <span className="min-w-0 flex-1 truncate" title={f.name}>{f.name}</span>
                 {f.status === 'reading' && <span className="text-muted-foreground">Reading…</span>}
+                {f.seenBefore && <span className="text-amber-600">Uploaded before ({f.seenBefore}); lines already in are skipped</span>}
                 {f.status === 'ready' && f.result && (
                   <span className="text-muted-foreground">
                     {f.result.lines.length} lines read{f.result.unreadable.length > 0 && <span className="text-destructive"> · {f.result.unreadable.length} could not be read</span>}

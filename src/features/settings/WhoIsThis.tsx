@@ -1,0 +1,63 @@
+import { useState } from 'react'
+import { Button } from '@/components/ui/button'
+import type { CounterpartyAnswer } from '@/lib/statementMemory'
+
+interface Props {
+  name: string
+  accounts: { id: string; name: string }[]
+  cards: { id: string; name: string }[]
+  members: { id: string; display_name: string }[]
+  categories: { id: string; name: string; kind: 'income' | 'expense' }[]
+  saving: boolean
+  onCancel: () => void
+  onSave: (answer: CounterpartyAnswer) => void
+}
+
+type Role = CounterpartyAnswer['role']
+
+// ADR-0020: answered once, applied to every line with this name, and remembered.
+export function WhoIsThis({ name, accounts, cards, members, categories, saving, onCancel, onSave }: Props) {
+  const [role, setRole] = useState<Role>('own_account')
+  const [target, setTarget] = useState('')
+
+  function save() {
+    if (!target) return
+    if (role === 'own_account') {
+      const isAccount = accounts.some((a) => a.id === target)
+      onSave({ role, accountId: isAccount ? target : null, cardId: isAccount ? null : target })
+    } else if (role === 'member') onSave({ role, memberId: target })
+    else onSave({ role, categoryId: target })
+  }
+
+  return (
+    <div className="space-y-2 border-b bg-muted/40 p-3 text-xs">
+      <p>
+        Who is <span className="font-medium">{name}</span>? Answer once and every line with this name follows it, now and on later statements.
+      </p>
+      <div className="flex flex-wrap items-center gap-2">
+        <select
+          className="h-8 rounded-md border bg-background px-2"
+          value={role}
+          onChange={(e) => {
+            setRole(e.target.value as Role)
+            setTarget('')
+          }}
+        >
+          <option value="own_account">One of our accounts or cards</option>
+          <option value="member">A member of the household</option>
+          <option value="merchant">A shop or company</option>
+        </select>
+        <select className="h-8 rounded-md border bg-background px-2" value={target} onChange={(e) => setTarget(e.target.value)} aria-label="Which one">
+          <option value="">Choose…</option>
+          {role === 'own_account' && [...accounts, ...cards].map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
+          {role === 'member' && members.map((m) => <option key={m.id} value={m.id}>{m.display_name}</option>)}
+          {role === 'merchant' && categories.filter((c) => c.kind === 'expense').map((c) => <option key={c.id} value={c.id}>Category: {c.name}</option>)}
+        </select>
+        <Button size="sm" disabled={!target || saving} onClick={save}>
+          {saving ? 'Saving…' : 'Save'}
+        </Button>
+        <Button size="sm" variant="ghost" onClick={onCancel}>Cancel</Button>
+      </div>
+    </div>
+  )
+}

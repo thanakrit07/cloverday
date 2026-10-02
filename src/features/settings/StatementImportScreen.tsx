@@ -11,10 +11,21 @@ import { formatBaht } from '@/lib/format'
 import { useHousehold } from '@/lib/HouseholdContext'
 import { useInstallments } from '@/lib/installments'
 import { parseCsvText } from '@/lib/import/parseCsv'
-import { applyStatementRows, buildStatementRows, SHARED, type StatementRow } from '@/lib/statementImport'
+import { applyCounterparties, applyStatementRows, buildStatementRows, normalizeStatementText, SHARED, type StatementRow } from '@/lib/statementImport'
+import {
+  hintMap,
+  recordStatementFiles,
+  rulesFromRows,
+  useCategoryHints,
+  useCounterparties,
+  useSaveCounterparty,
+  useStatementFiles,
+  type NewStatementFile,
+} from '@/lib/statementMemory'
 import { useTransactions } from '@/lib/transactions'
 import { cn } from '@/lib/utils'
 import { StatementPdfSource, type StatementWarning } from './StatementPdfSource'
+import { WhoIsThis } from './WhoIsThis'
 
 type Tab = 'review' | 'new' | 'imported'
 const TAB_OF: Record<StatementRow['status'], Tab> = { error: 'review', match: 'review', review: 'review', new: 'new', imported: 'imported' }
@@ -30,6 +41,7 @@ interface Draft {
   categoryOverride: [number, string][]
   whoOverride: [number, string][]
   warnings?: StatementWarning[]
+  files?: NewStatementFile[]
 }
 function loadDraft(): Draft | null {
   try {
@@ -56,6 +68,10 @@ export function StatementImportScreen({ onClose }: { onClose: () => void }) {
   const { data: cards } = useCards(householdId)
   const { data: categories } = useCategories(householdId)
   const { data: installments } = useInstallments(householdId)
+  const { data: seenFiles } = useStatementFiles(householdId)
+  const { data: counterpartyRows } = useCounterparties(householdId)
+  const { data: hintRows } = useCategoryHints(householdId)
+  const saveCounterparty = useSaveCounterparty(householdId, self.id)
   const [draft] = useState(loadDraft)
   const [csvRows, setCsvRows] = useState<Record<string, string>[] | null>(draft?.csvRows ?? null)
   const [tab, setTab] = useState<Tab>('review')
@@ -65,30 +81,46 @@ export function StatementImportScreen({ onClose }: { onClose: () => void }) {
   const [shown, setShown] = useState(PAGE)
   // Lines the reader could not read, and rows it could not place: shown, never dropped quietly.
   const [warnings, setWarnings] = useState<StatementWarning[]>(draft?.warnings ?? [])
+  // The files this review was built from, recorded when Apply succeeds.
+  const [fileMeta, setFileMeta] = useState<NewStatementFile[]>(draft?.files ?? [])
+  // A name the household is being asked about ("who is this?").
+  const [asking, setAsking] = useState<string | null>(null)
 
   useEffect(() => {
     if (!csvRows) return
-    const next: Draft = { csvRows, accepted: [...accepted], categoryOverride: [...categoryOverride], whoOverride: [...whoOverride], warnings }
+    const next: Draft = { csvRows, accepted: [...accepted], categoryOverride: [...categoryOverride], whoOverride: [...whoOverride], warnings, files: fileMeta }
     try {
       sessionStorage.setItem(DRAFT_KEY, JSON.stringify(next))
     } catch {
       // storage full or blocked: the screen still works, it just won't survive a reload
     }
-  }, [csvRows, accepted, categoryOverride, whoOverride, warnings])
+  }, [csvRows, accepted, categoryOverride, whoOverride, warnings, fileMeta])
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [applying, setApplying] = useState(false)
 
+  // What the household has said about names, applied before rows are built so a
+  // transfer to its own other account is a transfer, and keys never notice.
+  const rules = useMemo(
+    () => rulesFromRows(counterpartyRows ?? [], { accounts: accounts ?? [], cards: cards ?? [], members, categories: categories ?? [] }),
+    [counterpartyRows, accounts, cards, members, categories],
+  )
+  const hints = useMemo(() => {
+    const names = new Map((categories ?? []).map((c) => [c.id, c.name]))
+    return hintMap(hintRows ?? [], (id) => names.get(id))
+  }, [hintRows, categories])
+  const records = useMemo(() => (csvRows ? applyCounterparties(csvRows, rules) : null), [csvRows, rules])
+
   // Existing rows around the file's dates, for keys already imported and hand-entered matches.
   const range = useMemo(() => {
-    const dates = (csvRows ?? []).map((r) => r['Date']?.split('/').reverse().join('-')).filter(Boolean).sort()
+    const dates = (records ?? []).map((r) => r['Date']?.split('/').reverse().join('-')).filter(Boolean).sort()
     return dates.length ? { start: addDays(dates[0], -3), end: addDays(dates[dates.length - 1], 3) } : { start: '', end: '' }
-  }, [csvRows])
+  }, [records])
   const { data: existing } = useTransactions(householdId, range)
 
   const rows = useMemo(() => {
-    if (!csvRows || !accounts || !cards || !categories || !existing) return null
-    return buildStatementRows(csvRows, { accounts, cards, categories, existing })
-  }, [csvRows, accounts, cards, categories, existing])
+    if (!records || !accounts || !cards || !categories || !existing) return null
+    return buildStatementRows(records, { accounts, cards, categories, existing })
+  }, [records, accounts, cards, categories, existing])
 
   const liveCategories = useMemo(() => (categories ?? []).filter((c) => !c.archived && !c.system), [categories])
   const categoryById = useMemo(() => new Map((categories ?? []).map((c) => [c.id, c])), [categories])
@@ -119,9 +151,12 @@ export function StatementImportScreen({ onClose }: { onClose: () => void }) {
           accounts={accounts ?? []}
           cards={cards ?? []}
           plans={plans}
-          onReady={(records, found) => {
+          hints={hints}
+          seen={seenFiles ?? []}
+          onReady={(staged, found, files) => {
             setWarnings(found)
-            setCsvRows(records)
+            setFileMeta(files)
+            setCsvRows(staged)
           }}
         />
         <details className="mx-auto max-w-2xl p-4 text-sm">
@@ -136,6 +171,7 @@ export function StatementImportScreen({ onClose }: { onClose: () => void }) {
                 if (!file) return
                 try {
                   setWarnings([])
+                  setFileMeta([])
                   setCsvRows(parseCsvText(await file.text()).rows)
                 } catch (err) {
                   toast.error(`Couldn't read this CSV: ${err instanceof Error ? err.message : String(err)}`)
@@ -182,7 +218,10 @@ export function StatementImportScreen({ onClose }: { onClose: () => void }) {
         memberIds: members.map((m) => m.id),
         whoOf,
       })
+      await recordStatementFiles(householdId, self.id, fileMeta)
       await queryClient.invalidateQueries({ queryKey: ['transactions', householdId] })
+      await queryClient.invalidateQueries({ queryKey: ['statement_files', householdId] })
+      await queryClient.invalidateQueries({ queryKey: ['category_hints', householdId] })
       clearDraft()
       toast.success(`Imported ${result.inserted}, confirmed ${result.matched} matches`)
       onClose()
@@ -209,6 +248,25 @@ export function StatementImportScreen({ onClose }: { onClose: () => void }) {
           </ul>
         </details>
       )}
+      {asking && (
+        <WhoIsThis
+          name={asking}
+          accounts={accounts ?? []}
+          cards={cards ?? []}
+          members={members}
+          categories={liveCategories}
+          saving={saveCounterparty.isPending}
+          onCancel={() => setAsking(null)}
+          onSave={async (answer) => {
+            try {
+              await saveCounterparty.mutateAsync({ name: asking, answer })
+              setAsking(null)
+            } catch (e) {
+              toast.error(e instanceof Error ? e.message : 'Could not save')
+            }
+          }}
+        />
+      )}
       <div className="flex flex-wrap items-center gap-2 border-b p-2">
         {(['review', 'new', 'imported'] as Tab[]).map((t) => (
           <Button key={t} size="sm" variant={tab === t ? 'default' : 'ghost'} onClick={() => { setTab(t); setSelected(new Set()); setShown(PAGE) }}>
@@ -223,6 +281,7 @@ export function StatementImportScreen({ onClose }: { onClose: () => void }) {
               clearDraft()
               setCsvRows(null)
               setWarnings([])
+              setFileMeta([])
               setAccepted(new Set())
               setCategoryOverride(new Map())
               setWhoOverride(new Map())
@@ -321,7 +380,14 @@ export function StatementImportScreen({ onClose }: { onClose: () => void }) {
                     {instrumentName(r.fromAccountId, r.fromCardId)}
                     {r.kind === 'transfer' && ` → ${instrumentName(r.toAccountId, r.toCardId)}`}
                   </td>
-                  <td className="max-w-64 truncate p-2" title={r.description}>{r.description}</td>
+                  <td className="max-w-64 p-2">
+                    <div className="truncate" title={r.description}>{r.description}</div>
+                    {r.counterparty && actionable(r) && !rules.has(normalizeStatementText(r.counterparty)) && (
+                      <button className="text-primary underline underline-offset-2" onClick={() => setAsking(r.counterparty)}>
+                        Who is {r.counterparty}?
+                      </button>
+                    )}
+                  </td>
                   <td className={cn('whitespace-nowrap p-2 text-right tabular-nums', r.kind === 'income' && 'text-emerald-600')}>
                     {formatBaht(r.amount)}
                   </td>

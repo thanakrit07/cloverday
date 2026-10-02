@@ -58,6 +58,19 @@ migration.
   Rows whose category was only ever a guess (the old import's) are not in the
   view, so a guess can't teach the app to repeat it.
 
+**A line's key follows the statement it came from, not how the app has since
+classified it.** ADR-0019 keyed a line by its instrument, and the instrument
+changes the moment the household says a name is its own other account: the
+expense becomes a transfer, and an overlapping statement imported afterwards
+would no longer find the line it already has. The key now names the statement
+the line was printed on, so reclassifying never moves it. A transfer is the
+one exception, because both of its statements describe it differently (a bank
+calls it "โอนไป …", the card calls it "Payment received"): it is keyed by its
+two ends and its day alone, so the second statement's copy is a duplicate
+rather than a second transfer. The cost is a transfer whose two statements
+date it a day apart, which stays two lines until someone merges them, and a
+line imported as an expense before its name was explained, which stays one.
+
 **The app remembers which files it has seen, and only that.** `statement_files`
 holds a file's name with long digit runs removed (the database refuses a name
 that still has twelve in a row), a hash of its content, the date range and
