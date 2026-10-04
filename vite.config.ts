@@ -63,5 +63,12 @@ export default defineConfig({
   },
   test: {
     environment: 'node',
+    // Tests never talk to Supabase, but src/lib/supabase.ts refuses to load
+    // without these. Fixed fake values keep CI (which has no .env) green and
+    // mean a test can never reach a real database through a local .env.
+    env: {
+      VITE_SUPABASE_URL: 'http://127.0.0.1:1',
+      VITE_SUPABASE_ANON_KEY: 'test-anon-key',
+    },
   },
 })
