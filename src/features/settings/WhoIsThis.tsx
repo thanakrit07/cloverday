@@ -1,5 +1,7 @@
 import { useState } from 'react'
+import { CategoryOptions } from '@/components/CategoryOptions'
 import { Button } from '@/components/ui/button'
+import type { CategoryLike } from '@/lib/categoryGroups'
 import type { CounterpartyAnswer } from '@/lib/statementMemory'
 
 interface Props {
@@ -7,7 +9,7 @@ interface Props {
   accounts: { id: string; name: string }[]
   cards: { id: string; name: string }[]
   members: { id: string; display_name: string }[]
-  categories: { id: string; name: string; kind: 'income' | 'expense' }[]
+  categories: CategoryLike[]
   saving: boolean
   onCancel: () => void
   onSave: (answer: CounterpartyAnswer) => void
@@ -51,7 +53,7 @@ export function WhoIsThis({ name, accounts, cards, members, categories, saving, 
           <option value="">Choose…</option>
           {role === 'own_account' && [...accounts, ...cards].map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
           {role === 'member' && members.map((m) => <option key={m.id} value={m.id}>{m.display_name}</option>)}
-          {role === 'merchant' && categories.filter((c) => c.kind === 'expense').map((c) => <option key={c.id} value={c.id}>Category: {c.name}</option>)}
+          {role === 'merchant' && <CategoryOptions categories={categories} kind="expense" />}
         </select>
         <Button size="sm" disabled={!target || saving} onClick={save}>
           {saving ? 'Saving…' : 'Save'}
