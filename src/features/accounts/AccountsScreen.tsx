@@ -32,6 +32,7 @@ import { useInstallments, usePostedPeriods, type Installment } from '@/lib/insta
 import { ALL_TIME, dayMonthLabel } from '@/lib/month'
 import { useCreateTransaction, useTransactions, useUnconfirmedTransactions, type Transaction } from '@/lib/transactions'
 import { useSettlements, useUndoRepayment, useUnsettledShares } from '@/lib/transactionShares'
+import { groupByOwner } from '@/lib/ownerGroups'
 import { cn } from '@/lib/utils'
 import { SettleUpSheet } from '@/features/home/SettleUpSheet'
 
@@ -203,6 +204,16 @@ function BetweenUsSection() {
   )
 }
 
+function OwnerHeading({ member, total }: { member: { display_name: string; color: string } | undefined; total: string }) {
+  return (
+    <div className="flex items-center gap-2 px-1 pt-1 text-xs text-muted-foreground">
+      <span className="size-2 shrink-0 rounded-full" style={{ backgroundColor: member?.color ?? 'currentColor' }} />
+      <span className="flex-1 truncate">{member?.display_name ?? 'Former member'}</span>
+      <span>{total}</span>
+    </div>
+  )
+}
+
 interface Props {
   person: PersonFilter
   onOpenAccount: (accountId: string) => void
@@ -210,7 +221,7 @@ interface Props {
 }
 
 export function AccountsScreen({ person, onOpenAccount, onOpenCard }: Props) {
-  const { householdId, members } = useHousehold()
+  const { householdId, members, self } = useHousehold()
   const { data: accounts } = useAccounts(householdId)
   const { data: cards } = useCards(householdId)
   const { data: transactions } = useTransactions(householdId, ALL_TIME)
@@ -266,6 +277,43 @@ export function AccountsScreen({ person, onOpenAccount, onOpenCard }: Props) {
   // as a pair, "this is what we have, this is what is already spoken for."
   const accountsTotal = ownedAccounts.reduce((sum, a) => sum + accountBalance(a, allTxns, today), 0)
   const cardsSetAsideTotal = ownedCards.reduce((sum, c) => sum + setAsideFor(c), 0)
+
+  // "All" shows whose each instrument is: grouped by owner, yours first, each
+  // group with its own total. A household with one owner has nothing to tell
+  // apart, so the headings only appear once there are two or more.
+  const memberIds = members.map((m) => m.id)
+  const accountGroups = groupByOwner(ownedAccounts, memberIds, self.id)
+  const cardGroups = groupByOwner(ownedCards, memberIds, self.id)
+  const showOwners = person === 'all' && new Set([...ownedAccounts, ...ownedCards].map((i) => i.owner_id)).size > 1
+  const ownerOf = (id: string) => members.find((m) => m.id === id)
+
+  const accountRow = (account: Account) => (
+    <AccountRow
+      key={account.id}
+      account={account}
+      balance={accountBalance(account, allTxns, today)}
+      lastConfirmedDate={lastConfirmedDate(account, allTxns)}
+      onOpen={() => onOpenAccount(account.id)}
+      onEdit={() => setEditingAccount(account)}
+      onReconcile={() => setReconciling(account)}
+      onDelete={() => setDeleting({ kind: 'account', id: account.id, name: account.name })}
+    />
+  )
+  const cardRow = (card: Card) => {
+    const { bill, dueDate } = closedBillFor(card, allTxns, allInstallments, postedPeriodKeys, allAdjustments, today)
+    return (
+      <CardRow
+        key={card.id}
+        card={card}
+        bill={bill}
+        dueDate={dueDate}
+        outstanding={cardOutstanding(card, allTxns)}
+        onOpen={() => !card.archived && onOpenCard(card.id)}
+        onEdit={() => setEditingCard(card)}
+        onDelete={() => setDeleting({ kind: 'card', id: card.id, name: card.name })}
+      />
+    )
+  }
 
   const netWorthRows = members.map((m) => ({
     member: m,
@@ -364,18 +412,14 @@ export function AccountsScreen({ person, onOpenAccount, onOpenCard }: Props) {
           </div>
         </div>
         <ul className="space-y-1">
-          {ownedAccounts.map((account) => (
-            <AccountRow
-              key={account.id}
-              account={account}
-              balance={accountBalance(account, allTxns, today)}
-              lastConfirmedDate={lastConfirmedDate(account, allTxns)}
-              onOpen={() => onOpenAccount(account.id)}
-              onEdit={() => setEditingAccount(account)}
-              onReconcile={() => setReconciling(account)}
-              onDelete={() => setDeleting({ kind: 'account', id: account.id, name: account.name })}
-            />
-          ))}
+          {showOwners
+            ? accountGroups.map((g) => (
+                <li key={g.ownerId} className="space-y-1">
+                  <OwnerHeading member={ownerOf(g.ownerId)} total={formatBaht(g.items.reduce((sum, a) => sum + accountBalance(a, allTxns, today), 0))} />
+                  <ul className="space-y-1">{g.items.map(accountRow)}</ul>
+                </li>
+              ))
+            : ownedAccounts.map(accountRow)}
           {ownedAccounts.length === 0 && <p className="text-sm text-muted-foreground">No accounts yet.</p>}
         </ul>
       </section>
@@ -392,21 +436,14 @@ export function AccountsScreen({ person, onOpenAccount, onOpenCard }: Props) {
           </div>
         </div>
         <ul className="space-y-1">
-          {ownedCards.map((card) => {
-            const { bill, dueDate } = closedBillFor(card, allTxns, allInstallments, postedPeriodKeys, allAdjustments, today)
-            return (
-              <CardRow
-                key={card.id}
-                card={card}
-                bill={bill}
-                dueDate={dueDate}
-                outstanding={cardOutstanding(card, allTxns)}
-                onOpen={() => !card.archived && onOpenCard(card.id)}
-                onEdit={() => setEditingCard(card)}
-                onDelete={() => setDeleting({ kind: 'card', id: card.id, name: card.name })}
-              />
-            )
-          })}
+          {showOwners
+            ? cardGroups.map((g) => (
+                <li key={g.ownerId} className="space-y-1">
+                  <OwnerHeading member={ownerOf(g.ownerId)} total={`${formatBaht(g.items.reduce((sum, c) => sum + setAsideFor(c), 0))} set aside`} />
+                  <ul className="space-y-1">{g.items.map(cardRow)}</ul>
+                </li>
+              ))
+            : ownedCards.map(cardRow)}
           {ownedCards.length === 0 && <p className="text-sm text-muted-foreground">No cards yet.</p>}
         </ul>
       </section>
