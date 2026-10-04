@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { Trash2 } from 'lucide-react'
+import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
@@ -24,6 +25,7 @@ import type { EntryPrefill } from '@/lib/entryPrefill'
 import { formatBaht } from '@/lib/format'
 import { useHousehold } from '@/lib/HouseholdContext'
 import { toBuddhistYear } from '@/lib/month'
+import { useDeleteTransaction } from '@/lib/transactions'
 import { isValidSplit } from '@/lib/transactionShares'
 import {
   useCreateInstallment,
@@ -65,9 +67,13 @@ interface Props {
   // Set only when opened from Rep/Inst on the transaction form (D9) — what
   // was already typed there, carried over rather than retyped.
   prefill?: EntryPrefill
+  // The expense this plan stands in for, when it was opened from a row already
+  // saved: the plan posts every period itself, so keeping the original would
+  // count the purchase twice. Removed (soft-deleted) once the plan is saved.
+  supersedes?: string
 }
 
-export function InstallmentSheet({ installment, onClose, prefill }: Props) {
+export function InstallmentSheet({ installment, onClose, prefill, supersedes }: Props) {
   const { householdId, self, members } = useHousehold()
   const { data: categories } = useCategories(householdId)
   const { data: accounts } = useAccounts(householdId)
@@ -75,6 +81,7 @@ export function InstallmentSheet({ installment, onClose, prefill }: Props) {
   const create = useCreateInstallment(householdId)
   const update = useUpdateInstallment(householdId)
   const remove = useDeleteInstallment(householdId)
+  const removeExpense = useDeleteTransaction(householdId)
   const panel = useEntryPanel<PanelKey>()
 
   const [name, setName] = useState(installment?.name ?? prefill?.name ?? '')
@@ -158,6 +165,14 @@ export function InstallmentSheet({ installment, onClose, prefill }: Props) {
       await update.mutateAsync({ id: installment.id, input })
     } else {
       await create.mutateAsync(input)
+      if (supersedes) {
+        try {
+          await removeExpense.mutateAsync(supersedes)
+        } catch (e) {
+          // The plan exists; only the original is left to remove by hand.
+          toast.error(`The plan was saved, but the original expense could not be removed: ${e instanceof Error ? e.message : 'unknown error'}`)
+        }
+      }
     }
     onClose()
   }
@@ -217,6 +232,12 @@ export function InstallmentSheet({ installment, onClose, prefill }: Props) {
         )
       }
     >
+      {supersedes && (
+        <p className="rounded-lg border bg-muted/40 p-3 text-xs text-muted-foreground">
+          This plan replaces the expense you were editing: once it is saved, that expense is removed, because the plan posts every period itself.
+        </p>
+      )}
+
       <div className="space-y-1.5">
         <Label htmlFor="inst-name">Name</Label>
         {/* No autoFocus: opening the system keyboard the instant the sheet

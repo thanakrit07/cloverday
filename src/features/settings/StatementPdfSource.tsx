@@ -5,6 +5,7 @@ import { parseStatement } from '@/lib/statements/detect'
 import { stageStatements, type PlanRef, type StageInput } from '@/lib/statements/stage'
 import type { Layout, ParseResult } from '@/lib/statements/types'
 import { NEEDS_PLAN } from '@/lib/statementImport'
+import type { OrphanConversion } from '@/lib/superseded'
 import { coverageOf, describeCoverage, safeFileName, sha256Hex, type NewStatementFile, type StatementFile } from '@/lib/statementMemory'
 
 // ADR-0020: the statement PDFs are read right here, in this browser. The file,
@@ -25,7 +26,7 @@ interface Props {
   hints: ReadonlyMap<string, string>
   /** Files already uploaded, so a repeat is noticed. */
   seen: StatementFile[]
-  onReady: (records: Record<string, string>[], warnings: StatementWarning[], files: NewStatementFile[]) => void
+  onReady: (records: Record<string, string>[], warnings: StatementWarning[], files: NewStatementFile[], orphans: OrphanConversion[]) => void
 }
 
 // ponytail: which of this household's accounts a layout can be a statement of.
@@ -136,7 +137,8 @@ export function StatementPdfSource({ accounts, cards, plans, hints, seen, onRead
     ]
     const idOf = (name: string) => ({ accountId: accounts.find((a) => a.name === name)?.id ?? null, cardId: cards.find((c) => c.name === name)?.id ?? null })
     const meta: NewStatementFile[] = usable.flatMap((f) => (f.sha256 ? [{ fileName: f.name, sha256: f.sha256, periodStart: f.result!.periodStart, periodEnd: f.result!.periodEnd, ...idOf(f.instrument!), rowCount: f.result!.lines.length }] : []))
-    onReady(records, warnings, meta)
+    const orphans: OrphanConversion[] = issues.filter((i) => i.code === 'orphan_conversion').map((i) => ({ instrument: i.instrument, date: i.date, amount: i.amount, text: i.text }))
+    onReady(records, warnings, meta, orphans)
   }
 
   return (

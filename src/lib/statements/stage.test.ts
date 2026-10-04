@@ -142,6 +142,6 @@ describe('across files', () => {
     const orphan = parseKtc(['26/04/26 26/04/26 TRANSFER TO FLEXI DEMO NOTHING - 1,234.00', '27/04/26 27/04/26 DEMO A 1.00', '27/04/26 27/04/26 DEMO B 2.00'], ASOF)!
     const { issues } = stageStatements([{ instrument: 'KTC', result: orphan }], ctx())
     expect(issues).toHaveLength(1)
-    expect(issues[0]).toMatchObject({ amount: 1234, reason: expect.stringContaining('no matching purchase') })
+    expect(issues[0]).toMatchObject({ code: 'orphan_conversion', date: '2026-04-26', amount: 1234, reason: expect.stringContaining('no matching purchase') })
   })
 })

@@ -26,6 +26,7 @@ import { useTransactions } from '@/lib/transactions'
 import { cn } from '@/lib/utils'
 import { StatementPdfSource, type StatementWarning } from './StatementPdfSource'
 import { WhoIsThis } from './WhoIsThis'
+import { removeSuperseded, useSupersededCandidates, type OrphanConversion } from '@/lib/superseded'
 
 type Tab = 'review' | 'new' | 'imported'
 const TAB_OF: Record<StatementRow['status'], Tab> = { error: 'review', match: 'review', review: 'review', new: 'new', imported: 'imported' }
@@ -42,6 +43,8 @@ interface Draft {
   whoOverride: [number, string][]
   warnings?: StatementWarning[]
   files?: NewStatementFile[]
+  orphans?: OrphanConversion[]
+  supersede?: string[]
 }
 function loadDraft(): Draft | null {
   try {
@@ -73,6 +76,15 @@ export function StatementImportScreen({ onClose }: { onClose: () => void }) {
   const { data: hintRows } = useCategoryHints(householdId)
   const saveCounterparty = useSaveCounterparty(householdId, self.id)
   const [draft] = useState(loadDraft)
+  // Credits that turn a purchase into an installment, whose purchase is not in this
+  // import: the expense already in the ledger is offered for removal, never ticked for you.
+  const [orphans, setOrphans] = useState<OrphanConversion[]>(draft?.orphans ?? [])
+  const [supersede, setSupersede] = useState<Set<string>>(new Set(draft?.supersede))
+  const idsOf = (name: string) => ({
+    accountId: (accounts ?? []).find((a) => a.name === name)?.id ?? null,
+    cardId: (cards ?? []).find((c) => c.name === name)?.id ?? null,
+  })
+  const { data: supersededFound } = useSupersededCandidates(householdId, orphans, idsOf)
   const [csvRows, setCsvRows] = useState<Record<string, string>[] | null>(draft?.csvRows ?? null)
   const [tab, setTab] = useState<Tab>('review')
   const [accepted, setAccepted] = useState<Set<number>>(new Set(draft?.accepted))
@@ -88,13 +100,13 @@ export function StatementImportScreen({ onClose }: { onClose: () => void }) {
 
   useEffect(() => {
     if (!csvRows) return
-    const next: Draft = { csvRows, accepted: [...accepted], categoryOverride: [...categoryOverride], whoOverride: [...whoOverride], warnings, files: fileMeta }
+    const next: Draft = { csvRows, accepted: [...accepted], categoryOverride: [...categoryOverride], whoOverride: [...whoOverride], warnings, files: fileMeta, orphans, supersede: [...supersede] }
     try {
       sessionStorage.setItem(DRAFT_KEY, JSON.stringify(next))
     } catch {
       // storage full or blocked: the screen still works, it just won't survive a reload
     }
-  }, [csvRows, accepted, categoryOverride, whoOverride, warnings, fileMeta])
+  }, [csvRows, accepted, categoryOverride, whoOverride, warnings, fileMeta, orphans, supersede])
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [applying, setApplying] = useState(false)
 
@@ -153,9 +165,11 @@ export function StatementImportScreen({ onClose }: { onClose: () => void }) {
           plans={plans}
           hints={hints}
           seen={seenFiles ?? []}
-          onReady={(staged, found, files) => {
+          onReady={(staged, found, files, converted) => {
             setWarnings(found)
             setFileMeta(files)
+            setOrphans(converted)
+            setSupersede(new Set())
             setCsvRows(staged)
           }}
         />
@@ -172,6 +186,8 @@ export function StatementImportScreen({ onClose }: { onClose: () => void }) {
                 try {
                   setWarnings([])
                   setFileMeta([])
+                  setOrphans([])
+                  setSupersede(new Set())
                   setCsvRows(parseCsvText(await file.text()).rows)
                 } catch (err) {
                   toast.error(`Couldn't read this CSV: ${err instanceof Error ? err.message : String(err)}`)
@@ -221,6 +237,7 @@ export function StatementImportScreen({ onClose }: { onClose: () => void }) {
         whoOf,
       })
       await recordStatementFiles(householdId, self.id, fileMeta)
+      await removeSuperseded([...supersede])
       await queryClient.invalidateQueries({ queryKey: ['transactions', householdId] })
       await queryClient.invalidateQueries({ queryKey: ['statement_files', householdId] })
       await queryClient.invalidateQueries({ queryKey: ['category_hints', householdId] })
@@ -265,6 +282,39 @@ export function StatementImportScreen({ onClose }: { onClose: () => void }) {
           </ul>
         </details>
       )}
+      {(supersededFound ?? []).some((f) => f.candidates.length > 0) && (
+        <div className="space-y-2 border-b border-amber-500/40 bg-amber-500/5 p-2 text-xs">
+          <p className="font-medium">Purchases that became installments</p>
+          <p className="text-muted-foreground">
+            A credit below turns an earlier purchase into an installment. That purchase is already in your records as an ordinary expense, and the installment plan posts every period itself, so keeping both counts it twice. Remove it only if the plan already exists in the app. Nothing is removed unless you tick it and press Apply.
+          </p>
+          {(supersededFound ?? []).filter((f) => f.candidates.length > 0).map((f, i) => (
+            <div key={i} className="space-y-1">
+              <p>
+                Credit of {formatBaht(f.orphan.amount)} on {f.orphan.date} ({f.orphan.instrument}):
+              </p>
+              {f.candidates.map((c) => (
+                <label key={c.id} className="flex items-center gap-2 pl-3">
+                  <Checkbox
+                    checked={supersede.has(c.id)}
+                    onCheckedChange={(v) =>
+                      setSupersede((prev) => {
+                        const next = new Set(prev)
+                        if (v) next.add(c.id)
+                        else next.delete(c.id)
+                        return next
+                      })
+                    }
+                  />
+                  <span className="min-w-0 flex-1 truncate">
+                    Remove the expense of {c.date}: {c.description || c.note || 'no description'} ({formatBaht(c.amount)})
+                  </span>
+                </label>
+              ))}
+            </div>
+          ))}
+        </div>
+      )}
       {asking && (
         <WhoIsThis
           name={asking}
@@ -299,6 +349,8 @@ export function StatementImportScreen({ onClose }: { onClose: () => void }) {
               setCsvRows(null)
               setWarnings([])
               setFileMeta([])
+              setOrphans([])
+              setSupersede(new Set())
               setAccepted(new Set())
               setCategoryOverride(new Map())
               setWhoOverride(new Map())
