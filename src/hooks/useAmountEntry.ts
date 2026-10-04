@@ -8,13 +8,25 @@ import { appendKey, evaluateExpression, formatResult } from '@/lib/calculator'
 // its own instance while sharing the one Keypad in the sheet's footer.
 export function useAmountEntry(initial = '') {
   const [expr, setExpr] = useState(initial)
+  // Set by `fill` (a Preset's amount, D27): the first digit typed replaces
+  // the filled value instead of extending it, as if it were selected text —
+  // so 7 0 gives 70, not 6570. An operator still builds on it (65+10).
+  const [replaceNext, setReplaceNext] = useState(false)
   const value = evaluateExpression(expr)
 
   function press(key: string) {
-    setExpr((prev) => appendKey(prev, key))
+    const replace = replaceNext && /^[0-9.]$/.test(key)
+    setReplaceNext(false)
+    setExpr((prev) => appendKey(replace ? '' : prev, key))
+  }
+
+  function fill(next: string) {
+    setExpr(next)
+    setReplaceNext(true)
   }
 
   function pressEquals() {
+    setReplaceNext(false)
     setExpr((prev) => {
       const result = evaluateExpression(prev)
       return result > 0 ? formatResult(result) : ''
@@ -23,7 +35,8 @@ export function useAmountEntry(initial = '') {
 
   function reset() {
     setExpr('')
+    setReplaceNext(false)
   }
 
-  return { expr, setExpr, value, press, pressEquals, reset }
+  return { expr, setExpr, fill, value, press, pressEquals, reset }
 }

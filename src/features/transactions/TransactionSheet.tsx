@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { ArrowRightLeft, CalendarSync, ReceiptText, Repeat, Trash2 } from 'lucide-react'
+import { ArrowRightLeft, Bookmark, CalendarSync, Plus, ReceiptText, Repeat, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -14,6 +14,7 @@ import { ReceiptSheet } from './ReceiptSheet'
 import { DatePickerPanel } from '@/components/DatePickerPanel'
 import { EntryPage } from '@/components/EntryPage'
 import { EntryRow } from '@/components/EntryRow'
+import { FullScreenPage } from '@/components/FullScreenPage'
 import { InstrumentPickerPanel } from '@/components/InstrumentPickerPanel'
 import { type Instrument } from '@/components/InstrumentSelect'
 import { Keypad } from '@/components/Keypad'
@@ -23,6 +24,9 @@ import { useEntryPanel } from '@/hooks/useEntryPanel'
 import { categoryPath, useCategories, type Category } from '@/lib/categories'
 import { useCategoryUsage } from '@/lib/categoryUsage'
 import type { EntryPrefill } from '@/lib/entryPrefill'
+import { usePresets, type Preset } from '@/lib/presets'
+import { PresetsScreen } from '@/features/settings/PresetsScreen'
+import { SavePresetDialog } from './SavePresetDialog'
 import { useAccounts } from '@/lib/accounts'
 import { useCards } from '@/lib/cards'
 import { useHousehold } from '@/lib/HouseholdContext'
@@ -73,6 +77,7 @@ export function TransactionSheet({ open, onOpenChange, transaction, scan }: Prop
   const { householdId, self, members } = useHousehold()
   const { data: categories } = useCategories(householdId)
   const { data: usage } = useCategoryUsage(householdId)
+  const { data: presets } = usePresets(householdId, self.id)
   const { data: allShares } = useTransactionShares(householdId)
   const { data: accounts } = useAccounts(householdId)
   const { data: cards } = useCards(householdId)
@@ -195,20 +200,20 @@ export function TransactionSheet({ open, onOpenChange, transaction, scan }: Prop
   // category" placeholder.
   const selectedCategory: Category | null = categoryId ? ((categories ?? []).find((c) => c.id === categoryId) ?? null) : null
 
-  // v3.9 (F): recent-category chips. A one-tap shortcut for the common case
-  // (this month's coffee is the same category, same card, as last month's)
-  // — selectCategory already sets the last-used instrument alongside the
-  // category, so a chip tap does the work of two rows at once. Never the
-  // only way in: the Category row and its full grid stay exactly as they
-  // were for anything not in the top six (D17 — no row loses its access
-  // just because a shortcut exists for the common case).
-  const recentCategories = useMemo(() => {
-    if (!usage) return []
-    return (categories ?? [])
-      .filter((c) => !c.archived && !c.system && c.kind === kind && (usage.counts.get(c.id) ?? 0) > 0)
-      .sort((a, b) => (usage.counts.get(b.id) ?? 0) - (usage.counts.get(a.id) ?? 0))
-      .slice(0, 6)
-  }, [usage, categories, kind])
+  // D27: the chip row is the person's own Presets, in the order they set —
+  // replacing v3.9's top-six-by-frequency chips, which moved under the thumb
+  // as counts changed. Never the only way in: the Category row and its full
+  // grid stay exactly as they were (D17). A preset whose category has been
+  // archived drops out here; Settings → Presets still lists it.
+  const visiblePresets = useMemo(() => {
+    const byId = new Map((categories ?? []).map((c) => [c.id, c]))
+    return (presets ?? []).filter((p) => {
+      const c = byId.get(p.category_id)
+      return p.kind === kind && c != null && !c.archived && !c.system
+    })
+  }, [presets, categories, kind])
+  const [savingPreset, setSavingPreset] = useState(false)
+  const [managingPresets, setManagingPresets] = useState(false)
 
   function instrumentLabel(instrument: Instrument): string {
     if (instrument.accountId) return accounts?.find((a) => a.id === instrument.accountId)?.name ?? '…'
@@ -236,6 +241,20 @@ export function TransactionSheet({ open, onOpenChange, transaction, scan }: Prop
       const last = usage?.lastInstrument.get(category.id)
       if (last && (last.accountId || last.cardId)) setFrom(last)
     }
+  }
+
+  // A tap fills, never saves (D27). Category and instrument are what the tap
+  // asks for, so they replace; amount and note only fill an empty field, so
+  // nothing already typed is lost. A filled amount is replaced by the first
+  // digit typed (useAmountEntry.fill). A preset without an instrument falls
+  // back to the usual last-used default via selectCategory.
+  function applyPreset(preset: Preset) {
+    const category = categories?.find((c) => c.id === preset.category_id)
+    if (!category) return
+    selectCategory(category)
+    if (preset.account_id || preset.card_id) setFrom({ accountId: preset.account_id, cardId: preset.card_id })
+    if (!note && preset.note) setNote(preset.note)
+    if (amountField.value === 0 && preset.amount != null) amountField.fill(String(preset.amount))
   }
 
   // Clears what changes row to row and deliberately keeps what doesn't: the
@@ -372,6 +391,19 @@ export function TransactionSheet({ open, onOpenChange, transaction, scan }: Prop
         title={title}
         onClose={() => onOpenChange(false)}
         panelOpen={panel.active !== null}
+        headerActions={
+          !transaction && kind !== 'transfer' ? (
+            <Button
+              variant="ghost"
+              size="icon"
+              onClick={() => setSavingPreset(true)}
+              disabled={!categoryId}
+              aria-label="Save as preset"
+            >
+              <Bookmark className="size-4" />
+            </Button>
+          ) : null
+        }
         footer={
           panel.active === 'amount' ? (
             <Keypad onKey={amountField.press} onEquals={amountField.pressEquals} onDone={panel.close} />
@@ -475,22 +507,35 @@ export function TransactionSheet({ open, onOpenChange, transaction, scan }: Prop
           onActivate={() => panel.toggle('amount')}
         />
 
-        {kind !== 'transfer' && recentCategories.length > 0 && (
+        {kind !== 'transfer' && (visiblePresets.length > 0 || !transaction) && (
           <div className="-mx-4 flex gap-1.5 overflow-x-auto px-4 pb-0.5">
-            {recentCategories.map((c) => (
+            {visiblePresets.map((p) => {
+              const c = categories?.find((x) => x.id === p.category_id)
+              return (
+                <button
+                  key={p.id}
+                  type="button"
+                  onClick={() => applyPreset(p)}
+                  className={cn(
+                    'flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm transition-colors',
+                    categoryId === p.category_id ? 'border-primary bg-primary/10' : 'border-border active:bg-accent',
+                  )}
+                >
+                  <CategoryIcon icon={c?.icon ?? null} color={c?.color ?? null} className="size-3.5 shrink-0" />
+                  <span className="whitespace-nowrap">{p.name}</span>
+                </button>
+              )
+            })}
+            {visiblePresets.length === 0 && (
               <button
-                key={c.id}
                 type="button"
-                onClick={() => selectCategory(c)}
-                className={cn(
-                  'flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm transition-colors',
-                  categoryId === c.id ? 'border-primary bg-primary/10' : 'border-border active:bg-accent',
-                )}
+                onClick={() => setManagingPresets(true)}
+                className="flex shrink-0 items-center gap-1 rounded-full border border-dashed px-3 py-1.5 text-sm text-muted-foreground active:bg-accent"
               >
-                <CategoryIcon icon={c.icon} color={c.color} className="size-3.5 shrink-0" />
-                <span className="whitespace-nowrap">{c.name}</span>
+                <Plus className="size-3.5" />
+                Preset
               </button>
-            ))}
+            )}
           </div>
         )}
 
@@ -708,6 +753,25 @@ export function TransactionSheet({ open, onOpenChange, transaction, scan }: Prop
             onOpenChange(false)
           }}
         />
+      )}
+      {savingPreset && categoryId && kind !== 'transfer' && (
+        <SavePresetDialog
+          defaultName={note || selectedCategory?.name || ''}
+          draft={{
+            kind,
+            category_id: categoryId,
+            note: note.trim() || null,
+            account_id: from.accountId,
+            card_id: from.cardId,
+            amount: amountField.value > 0 ? amountField.value : null,
+          }}
+          onClose={() => setSavingPreset(false)}
+        />
+      )}
+      {managingPresets && (
+        <FullScreenPage title="Presets" onClose={() => setManagingPresets(false)}>
+          <PresetsScreen />
+        </FullScreenPage>
       )}
       {confirmingDelete && (
         <ConfirmDialog

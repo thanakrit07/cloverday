@@ -16,6 +16,7 @@ interface Props {
   // Category) doesn't reflow the page under it or read as a different kind
   // of thing each time.
   panelOpen?: boolean
+  headerActions?: ReactNode
 }
 
 // Only a drag starting this close to the left edge arms the dismiss gesture
@@ -110,7 +111,7 @@ function useEdgeSwipeToDismiss(onDismiss: () => void, enabled: boolean) {
 // bottom picker panel becomes a side column next to the form rather than a
 // sheet under it, using the same `panelOpen` boolean every call site already
 // threads through; no new state needed.
-export function EntryPage({ title, onClose, children, footer, panelOpen }: Props) {
+export function EntryPage({ title, onClose, children, footer, panelOpen, headerActions }: Props) {
   const isDesktop = useIsDesktop()
   const { offset, handlers } = useEdgeSwipeToDismiss(onClose, !isDesktop)
 
@@ -136,6 +137,7 @@ export function EntryPage({ title, onClose, children, footer, panelOpen }: Props
           <div className="flex min-w-0 flex-1 flex-col">
             <header className="flex items-center gap-2 border-b px-4 py-3">
               <h1 className="min-w-0 flex-1 truncate font-heading text-base font-semibold">{title}</h1>
+              {headerActions}
               <Button variant="ghost" size="icon" onClick={onClose} aria-label="Close">
                 <X className="size-4" />
               </Button>
@@ -163,7 +165,8 @@ export function EntryPage({ title, onClose, children, footer, panelOpen }: Props
           <Button variant="ghost" size="icon" onClick={onClose} aria-label="Back">
             <ChevronLeft className="size-5" />
           </Button>
-          <h1 className="font-heading text-sm font-medium">{title}</h1>
+          <h1 className="min-w-0 flex-1 truncate font-heading text-sm font-medium">{title}</h1>
+          {headerActions}
         </header>
         <div className="flex-1 space-y-3 overflow-y-auto px-4 pt-3 pb-4">{children}</div>
         <div
