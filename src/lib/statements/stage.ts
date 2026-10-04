@@ -23,6 +23,8 @@ export interface StagedRow {
   statement: string
   /** The name after the account on a bank transfer line, as printed. */
   counterparty: string | null
+  /** The file the line was read from, as shown to the household. */
+  file: string
 }
 
 export interface StageIssue {
@@ -47,6 +49,8 @@ export interface StageContext {
 export interface StageInput {
   /** The account or card this file is a statement of, by name. */
   instrument: string
+  /** The file's display name, carried onto each row so the review can say where it came from. */
+  fileName?: string
   result: ParseResult
 }
 
@@ -147,10 +151,10 @@ export function stageStatements(files: StageInput[], ctx: StageContext): { rows:
     }
   }
 
-  for (const { instrument, result } of files) {
+  for (const { instrument, result, fileName } of files) {
     for (const l of result.lines) {
       if (dropped.has(l)) continue
-      const base = { date: l.date, postedDate: l.postedDate, amount: l.amount, text: l.text, statement: instrument, counterparty: isBank(result.layout) ? counterpartyOf(l.text, result.layout) : null }
+      const base = { date: l.date, postedDate: l.postedDate, amount: l.amount, text: l.text, statement: instrument, file: fileName ?? '', counterparty: isBank(result.layout) ? counterpartyOf(l.text, result.layout) : null }
 
       if (isBank(result.layout)) {
         if (l.direction === 'debit') {

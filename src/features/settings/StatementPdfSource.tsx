@@ -113,7 +113,7 @@ export function StatementPdfSource({ accounts, cards, plans, hints, seen, onRead
   }
 
   function carryOn() {
-    const inputs: StageInput[] = usable.map((f) => ({ instrument: f.instrument!, result: f.result! }))
+    const inputs: StageInput[] = usable.map((f) => ({ instrument: f.instrument!, result: f.result!, fileName: f.name }))
     const { rows, issues } = stageStatements(inputs, { plans, hints })
     const records = rows.map((r) => ({
       Date: dmy(r.date),
@@ -128,6 +128,7 @@ export function StatementPdfSource({ accounts, cards, plans, hints, seen, onRead
       Owner: '',
       Statement: r.statement,
       Counterparty: r.counterparty ?? '',
+      File: r.file,
     }))
     const warnings: StatementWarning[] = [
       ...issues.map((i) => ({ source: i.instrument, reason: i.reason, text: i.text })),

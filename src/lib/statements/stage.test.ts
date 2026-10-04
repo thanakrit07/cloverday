@@ -96,6 +96,16 @@ describe('card statement rows', () => {
   })
 })
 
+describe('which file a row came from', () => {
+  it('carries each file\'s name onto its own rows', () => {
+    const a = parseKtc(['03/04/26 04/04/26 DEMO A 1.00', '03/04/26 04/04/26 DEMO B 2.00', '03/04/26 04/04/26 DEMO C 3.00'], ASOF)!
+    const b = parseKtc(['05/04/26 06/04/26 DEMO D 4.00', '05/04/26 06/04/26 DEMO E 5.00', '05/04/26 06/04/26 DEMO F 6.00'], ASOF)!
+    const { rows } = stageStatements([{ instrument: 'KTC', result: a, fileName: 'first.pdf' }, { instrument: 'KTC', result: b, fileName: 'second.pdf' }, ], ctx())
+    expect(rows.map((r) => r.file)).toEqual(['first.pdf', 'first.pdf', 'first.pdf', 'second.pdf', 'second.pdf', 'second.pdf'])
+    expect(stageStatements([{ instrument: 'KTC', result: a }], ctx()).rows[0].file).toBe('')
+  })
+})
+
 describe('across files', () => {
   const ktc = parseKtc(
     [

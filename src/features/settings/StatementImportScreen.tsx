@@ -186,6 +186,8 @@ export function StatementImportScreen({ onClose }: { onClose: () => void }) {
   }
   if (!rows) return <p className="p-4 text-sm text-muted-foreground">Loading…</p>
 
+  // A file column only helps when there is more than one file to tell apart.
+  const showFile = new Set(rows.map((r) => r.file).filter(Boolean)).size > 1
   const visible = rows.filter((r) => TAB_OF[r.status] === tab)
   const actionable = (r: StatementRow) => r.status !== 'error' && r.status !== 'imported'
   const effective = (r: StatementRow): StatementRow => {
@@ -234,6 +236,21 @@ export function StatementImportScreen({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="flex h-full flex-col">
+      {fileMeta.length > 0 && (
+        <div className="border-b p-2 text-xs">
+          <span className="font-medium">Reviewing {fileMeta.length === 1 ? '1 file' : `${fileMeta.length} files`}:</span>
+          <ul className="mt-1 space-y-0.5 text-muted-foreground">
+            {fileMeta.map((f) => (
+              <li key={f.sha256} className="flex flex-wrap gap-x-2">
+                <span className="break-all text-foreground">{f.fileName}</span>
+                <span>
+                  {(accounts ?? []).find((a) => a.id === f.accountId)?.name ?? (cards ?? []).find((c) => c.id === f.cardId)?.name ?? ''} · {f.rowCount} lines read
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
       {warnings.length > 0 && (
         <details className="border-b border-destructive/40 bg-destructive/5 p-2 text-xs" open>
           <summary className="cursor-pointer font-medium text-destructive">
@@ -348,6 +365,7 @@ export function StatementImportScreen({ onClose }: { onClose: () => void }) {
               </th>
               <th className="p-2">Date</th>
               <th className="p-2">Account</th>
+              {showFile && <th className="p-2">File</th>}
               <th className="p-2">Description</th>
               <th className="p-2 text-right">Amount</th>
               <th className="p-2">Category</th>
@@ -380,6 +398,7 @@ export function StatementImportScreen({ onClose }: { onClose: () => void }) {
                     {instrumentName(r.fromAccountId, r.fromCardId)}
                     {r.kind === 'transfer' && ` → ${instrumentName(r.toAccountId, r.toCardId)}`}
                   </td>
+                  {showFile && <td className="max-w-40 truncate p-2 text-muted-foreground" title={r.file}>{r.file}</td>}
                   <td className="max-w-64 p-2">
                     <div className="truncate" title={r.description}>{r.description}</div>
                     {r.counterparty && actionable(r) && !rules.has(normalizeStatementText(r.counterparty)) && (

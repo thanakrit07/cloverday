@@ -38,6 +38,8 @@ export interface StatementRow {
   sourceKey: string
   /** The name after the account on a transfer line, as printed; what the app is asked "who is this?" about. */
   counterparty: string
+  /** The statement file this line was read from, when it came from a PDF. */
+  file: string
   /** CSV's Owner column as written (a member's name, "shared", or blank). */
   ownerHint: string
   /** For 'match': the hand-entered row the screen suggests this line is. */
@@ -173,6 +175,7 @@ export function buildStatementRows(rows: Record<string, string>[], ctx: Statemen
       toCardId: to.cardId,
       sourceKey,
       counterparty: (raw['Counterparty'] ?? '').trim(),
+      file: (raw['File'] ?? '').trim(),
       ownerHint: (raw['Owner'] ?? '').trim(),
       matchId,
     }

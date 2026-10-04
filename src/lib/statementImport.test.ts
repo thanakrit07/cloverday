@@ -71,6 +71,13 @@ describe('buildStatementRows', () => {
   })
 })
 
+describe('the file a line came from', () => {
+  it('is read from the File column and empty for a CSV without one', () => {
+    expect(buildStatementRows([row({ File: 'demo.pdf' })], ctx())[0].file).toBe('demo.pdf')
+    expect(buildStatementRows([row()], ctx())[0].file).toBe('')
+  })
+})
+
 describe('normalizeStatementText', () => {
   it('collapses whitespace, trims and lower-cases, the same as v_category_hints', () => {
     expect(normalizeStatementText('  DEMO  Cafe\tBANGKOK \n')).toBe('demo cafe bangkok')
