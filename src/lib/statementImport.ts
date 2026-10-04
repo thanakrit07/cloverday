@@ -259,6 +259,34 @@ export async function applyStatementRows(
   return { inserted: inserts.length, matched: matches.length }
 }
 
+export interface UnknownName {
+  /** The key it is remembered under (normalised). */
+  key: string
+  /** The name as first printed. */
+  name: string
+  count: number
+  total: number
+}
+
+/**
+ * The names on this import's lines the app has no answer for yet, most lines
+ * first, so a household can settle the common ones in one go. Lines already in
+ * the database don't count: asking about them changes nothing.
+ */
+export function unknownNames(rows: Pick<StatementRow, 'counterparty' | 'status' | 'amount'>[], known: ReadonlyMap<string, unknown>): UnknownName[] {
+  const byKey = new Map<string, UnknownName>()
+  for (const r of rows) {
+    if (!r.counterparty || r.status === 'imported') continue
+    const key = normalizeStatementText(r.counterparty)
+    if (known.has(key)) continue
+    const entry = byKey.get(key) ?? { key, name: r.counterparty, count: 0, total: 0 }
+    entry.count += 1
+    entry.total += r.amount
+    byKey.set(key, entry)
+  }
+  return [...byKey.values()].sort((a, b) => b.count - a.count || b.total - a.total)
+}
+
 /** What the household has said about a name on a transfer line. */
 export type CounterpartyRule =
   | { role: 'own_account'; target: string }
@@ -283,6 +311,7 @@ export function applyCounterparties(records: Record<string, string>[], memory: R
         : { ...r, Kind: 'transfer', Category: '', 'To account or card': rule.target }
     }
     if (rule.role === 'member') return r['Kind'] === 'expense' ? { ...r, Owner: rule.memberName } : r
-    return { ...r, Category: rule.category }
+    // The category chosen for a shop is a spending category: money coming back from it keeps its own.
+    return r['Kind'] === 'expense' ? { ...r, Category: rule.category } : r
   })
 }
