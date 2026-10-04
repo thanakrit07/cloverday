@@ -5,11 +5,10 @@ import { toMaps, type CategoryUsageData } from './categoryUsage'
 // React Query persists query data to localStorage as JSON, and a Map
 // stringifies to `{}` — so after any reload the rehydrated value had no
 // entries and no `.get`, and the transaction sheet crashed with
-// "counts.get is not a function". The queryFn now returns plain objects and
+// "lastInstrument.get is not a function". The queryFn now returns plain objects and
 // the Maps are rebuilt per observer by `select`.
 describe('category usage data', () => {
   const sample: CategoryUsageData = {
-    counts: { 'cat-food': 12, 'cat-transport': 3 },
     lastInstrument: { 'cat-food': { accountId: null, cardId: 'card-ktc' } },
   }
 
@@ -19,14 +18,13 @@ describe('category usage data', () => {
 
   it('rebuilds working Maps from round-tripped data', () => {
     const restored = toMaps(JSON.parse(JSON.stringify(sample)) as CategoryUsageData)
-    expect(restored.counts.get('cat-food')).toBe(12)
     expect(restored.lastInstrument.get('cat-food')).toEqual({ accountId: null, cardId: 'card-ktc' })
   })
 
   it('returns empty Maps rather than throwing when there is no usage yet', () => {
-    const empty = toMaps({ counts: {}, lastInstrument: {} })
-    expect(empty.counts.size).toBe(0)
-    expect(empty.counts.get('anything')).toBeUndefined()
+    const empty = toMaps({ lastInstrument: {} })
+    expect(empty.lastInstrument.size).toBe(0)
+    expect(empty.lastInstrument.get('anything')).toBeUndefined()
   })
 
   it('a Map would NOT have survived — the shape this guards against', () => {

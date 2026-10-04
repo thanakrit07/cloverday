@@ -14,13 +14,11 @@ interface Instrument {
  * `.get`. **Everything a queryFn returns must survive a JSON round-trip.**
  */
 export interface CategoryUsageData {
-  counts: Record<string, number>
   lastInstrument: Record<string, Instrument>
 }
 
 /** What callers get — Maps, rebuilt per observer by `select` (never persisted). */
 export interface CategoryUsage {
-  counts: Map<string, number>
   lastInstrument: Map<string, Instrument>
 }
 
@@ -28,14 +26,12 @@ export interface CategoryUsage {
 // re-running select when neither the data nor the function changed.
 export function toMaps(data: CategoryUsageData): CategoryUsage {
   return {
-    counts: new Map(Object.entries(data.counts)),
     lastInstrument: new Map(Object.entries(data.lastInstrument)),
   }
 }
 
-// DESIGN.md §7.2: the quick-add category grid is ordered by frequency of
-// use, and the account/card defaults to the one last used with the chosen
-// category. Both are derived from the last 90 days of transactions.
+// DESIGN.md §7.2: the account/card defaults to the one last used with the
+// chosen category, derived from the last 90 days of transactions.
 export function useCategoryUsage(householdId: string) {
   return useQuery({
     queryKey: ['category-usage', householdId],
@@ -52,18 +48,16 @@ export function useCategoryUsage(householdId: string) {
         .limit(1000)
       if (error) throw error
 
-      const counts: Record<string, number> = {}
       const lastInstrument: Record<string, Instrument> = {}
       for (const row of data) {
         const id = row.category_id as string
-        counts[id] = (counts[id] ?? 0) + 1
         // Rows are newest-first, so the first row seen per category is the
         // most recently used instrument for it.
         if (!(id in lastInstrument)) {
           lastInstrument[id] = { accountId: row.from_account_id, cardId: row.from_card_id }
         }
       }
-      return { counts, lastInstrument }
+      return { lastInstrument }
     },
     staleTime: 60_000,
   })

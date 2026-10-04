@@ -6,6 +6,7 @@ import { FullScreenPage } from '@/components/FullScreenPage'
 import { CategoriesScreen } from '@/features/categories/CategoriesScreen'
 import { ChangePasswordDialog } from '@/features/settings/ChangePasswordDialog'
 import { InviteSection } from '@/features/settings/InviteSection'
+import { PresetsScreen } from '@/features/settings/PresetsScreen'
 import { useHousehold } from '@/lib/HouseholdContext'
 import { clearPersistedCache } from '@/lib/queryClient'
 import { supabase } from '@/lib/supabase'
@@ -56,6 +57,7 @@ function ThemeToggle() {
 export function SettingsScreen() {
   const { self, members } = useHousehold()
   const [categoriesOpen, setCategoriesOpen] = useState(false)
+  const [presetsOpen, setPresetsOpen] = useState(false)
   const [importOpen, setImportOpen] = useState<'full' | 'transactions' | null>(null)
   const [statementOpen, setStatementOpen] = useState(false)
   const [passwordOpen, setPasswordOpen] = useState(false)
@@ -91,6 +93,9 @@ export function SettingsScreen() {
           <Button variant="outline" onClick={() => setCategoriesOpen(true)}>
             Manage categories
           </Button>
+          <Button variant="outline" onClick={() => setPresetsOpen(true)}>
+            Presets
+          </Button>
           <Button variant="outline" onClick={() => setImportOpen('transactions')}>
             Bulk add transactions
           </Button>
@@ -125,6 +130,12 @@ export function SettingsScreen() {
       {categoriesOpen && (
         <FullScreenPage title="Categories" onClose={() => setCategoriesOpen(false)}>
           <CategoriesScreen />
+        </FullScreenPage>
+      )}
+
+      {presetsOpen && (
+        <FullScreenPage title="Presets" onClose={() => setPresetsOpen(false)}>
+          <PresetsScreen />
         </FullScreenPage>
       )}
 

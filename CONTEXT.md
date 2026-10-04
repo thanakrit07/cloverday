@@ -72,6 +72,12 @@ can disagree with them.
 _Avoid_: basket, group, parent transaction, **split** (that word is already the
 division between Members)
 
+**Preset**:
+One Member's named fill for the entry form: a Kind and a Category, and optionally
+a note, an Instrument and an amount. Tapping it fills the form; it never records a
+Transaction by itself, and it never decides who bears one.
+_Avoid_: template (sounds like a Recurring Rule), favourite, shortcut
+
 ### Commitments
 
 **Installment Plan**:
