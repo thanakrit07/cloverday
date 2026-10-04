@@ -252,8 +252,12 @@ export function StatementImportScreen({ onClose }: { onClose: () => void }) {
     }
   }
 
+  // Desktop pins everything above the table and scrolls the table alone. A
+  // phone hasn't the height for that: the file list, warnings and wrapped
+  // toolbars can fill the screen and leave the table no room at all, so there
+  // the whole page scrolls instead.
   return (
-    <div className="flex h-full flex-col">
+    <div className="flex min-h-full flex-col lg:h-full">
       {fileMeta.length > 0 && (
         <div className="border-b p-2 text-xs">
           <span className="font-medium">Reviewing {fileMeta.length === 1 ? '1 file' : `${fileMeta.length} files`}:</span>
@@ -403,7 +407,7 @@ export function StatementImportScreen({ onClose }: { onClose: () => void }) {
         </div>
       )}
 
-      <div className="flex-1 overflow-auto">
+      <div className="overflow-x-auto lg:flex-1 lg:overflow-auto">
         <table className="w-full text-xs">
           <thead className="sticky top-0 bg-background text-left text-muted-foreground">
             <tr>
