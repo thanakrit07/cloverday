@@ -3,7 +3,7 @@ import { ChevronDown } from 'lucide-react'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useCardCycleAdjustments } from '@/lib/cardCycleAdjustments'
 import { useCards } from '@/lib/cards'
-import { cycleBill, cycleDueInMonth, periodDate } from '@/lib/finance/billingCycle'
+import { cycleBill, cycleDueInMonth, cycleFetchRange, periodDate } from '@/lib/finance/billingCycle'
 import { formatBaht } from '@/lib/format'
 import { useHousehold } from '@/lib/HouseholdContext'
 import { useInstallments, usePostedPeriods } from '@/lib/installments'
@@ -77,7 +77,7 @@ export function CardForecastTab() {
     const all = grid.flatMap((row) => row.cells.map((c) => c.cycle))
     if (all.length === 0) return null
     return {
-      start: all.reduce((min, c) => (c.start < min ? c.start : min), all[0].start),
+      start: cycleFetchRange(all.reduce((min, c) => (c.start < min.start ? c : min), all[0])).start,
       end: all.reduce((max, c) => (c.end > max ? c.end : max), all[0].end),
     }
   }, [grid])

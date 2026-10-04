@@ -30,6 +30,7 @@ function tx(overrides: Partial<Transaction> = {}): Transaction {
     source: 'manual',
     source_key: null,
     receipt_id: null,
+    posted_date: null,
     ...overrides,
   }
 }

@@ -8,5 +8,18 @@
       "Read(~/Downloads/wealth-prof-*.csv)",
       "Read(./statements/raw/**)"
     ]
+  },
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR\"/scripts/hooks/sensitive.py claude"
+          }
+        ]
+      }
+    ]
   }
 }

@@ -3,7 +3,7 @@ import { ChevronDown, ChevronRight } from 'lucide-react'
 import { CategoryIcon } from '@/lib/categoryIcons'
 import { CATEGORY_COLORS, effectiveMainId, useCategories, type Category } from '@/lib/categories'
 import type { Card } from '@/lib/cards'
-import { addDays, cycleOf, type Cycle } from '@/lib/finance/billingCycle'
+import { addDays, cycleFetchRange, cycleOf, inCycle, type Cycle } from '@/lib/finance/billingCycle'
 import { useHousehold } from '@/lib/HouseholdContext'
 import { borneAmount, matchesPersonFilter, sharesByTransaction, type PersonFilter } from '@/lib/filters'
 import { formatBaht } from '@/lib/format'
@@ -150,7 +150,7 @@ interface Props {
 export function RecordsSummary({ month, person, card, cardCycle, filter }: Props) {
   const { householdId, members } = useHousehold()
   const range = useMemo(
-    () => (cardCycle ? { start: cardCycle.start, end: cardCycle.end } : monthRange(month)),
+    () => (cardCycle ? cycleFetchRange(cardCycle) : monthRange(month)),
     [month, cardCycle],
   )
   // CardCycleSummary's paidSoFar needs to see a payment settling this
@@ -161,7 +161,7 @@ export function RecordsSummary({ month, person, card, cardCycle, filter }: Props
   const paymentSearchRange = useMemo(() => {
     if (!cardCycle || !card) return range
     const nextCycle = cycleOf(card, addDays(cardCycle.end, 1))
-    return { start: cardCycle.start, end: nextCycle.end }
+    return { start: cycleFetchRange(cardCycle).start, end: nextCycle.end }
   }, [cardCycle, card, range])
   const { data: transactions } = useTransactions(householdId, range)
   const { data: widerTransactions } = useTransactions(householdId, paymentSearchRange)
@@ -177,8 +177,14 @@ export function RecordsSummary({ month, person, card, cardCycle, filter }: Props
   // correction" (system category — balanceAdjustments.ts) are excluded from
   // every total here, same as in TransactionsScreen.
   const confirmed = useMemo(
-    () => (transactions ?? []).filter((t) => t.confirmed && !categoryById.get(t.category_id ?? '')?.system),
-    [transactions, categoryById],
+    () =>
+      (transactions ?? []).filter(
+        (t) =>
+          t.confirmed &&
+          !categoryById.get(t.category_id ?? '')?.system &&
+          (!cardCycle || inCycle(t, cardCycle)),
+      ),
+    [transactions, categoryById, cardCycle],
   )
   // Sourced from the wider fetch (paymentSearchRange), not `confirmed`, so
   // a payment dated after this cycle closes — where one settling this

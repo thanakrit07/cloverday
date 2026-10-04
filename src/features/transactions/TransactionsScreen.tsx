@@ -9,7 +9,7 @@ import { useIsDesktop } from '@/hooks/useIsDesktop'
 import { CategoryIcon } from '@/lib/categoryIcons'
 import { categoryPath, useCategories } from '@/lib/categories'
 import type { Card } from '@/lib/cards'
-import type { Cycle } from '@/lib/finance/billingCycle'
+import { cycleFetchRange, inCycle, type Cycle } from '@/lib/finance/billingCycle'
 import { useInstrumentNames } from '@/lib/instruments'
 import { useHousehold } from '@/lib/HouseholdContext'
 import { borneAmount, matchesPersonFilter, sharesByTransaction, type PersonFilter } from '@/lib/filters'
@@ -90,7 +90,7 @@ export function TransactionsScreen({
   const isCalendar = view === 'calendar' && !isSearching
   const showViewToggle = !isSearching && !cardCycle
   const range = useMemo(
-    () => (isSearching ? ALL_TIME : cardCycle ? { start: cardCycle.start, end: cardCycle.end } : monthRange(month)),
+    () => (isSearching ? ALL_TIME : cardCycle ? cycleFetchRange(cardCycle) : monthRange(month)),
     [month, cardCycle, isSearching],
   )
   const { data: transactions } = useTransactions(householdId, range)
@@ -199,6 +199,7 @@ export function TransactionsScreen({
       matchesPersonFilter(t, sharesByTxn, person) &&
       matchesRecordsFilter(t, filter) &&
       matchesCard(t) &&
+      (!cardCycle || inCycle(t, cardCycle)) &&
       matchesSearch(t),
   )
   // D14: day totals below are what this person Borne, not the face value of

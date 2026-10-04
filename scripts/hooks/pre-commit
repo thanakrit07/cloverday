@@ -1,0 +1,3 @@
+#!/bin/sh
+# เปิดใช้: git config core.hooksPath scripts/hooks  (npm install ตั้งให้เองผ่าน "prepare")
+exec python3 "$(dirname "$0")/sensitive.py" staged

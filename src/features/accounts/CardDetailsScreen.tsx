@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/button'
 import { useCards } from '@/lib/cards'
 import { CategoryIcon } from '@/lib/categoryIcons'
 import { categoryPath, useCategories } from '@/lib/categories'
-import { addDays, cycleOf } from '@/lib/finance/billingCycle'
+import { addDays, cycleFetchRange, cycleOf, inCycle } from '@/lib/finance/billingCycle'
 import { sharesByTransaction } from '@/lib/filters'
 import { formatBaht } from '@/lib/format'
 import { useHousehold } from '@/lib/HouseholdContext'
@@ -44,7 +44,7 @@ export function CardDetailsScreen({ cardId, onClose }: Props) {
 
   const card = (cards ?? []).find((c) => c.id === cardId) ?? null
   const cycle = card ? cycleOf(card, anchor) : null
-  const range = cycle ? { start: cycle.start, end: cycle.end } : { start: anchor, end: anchor }
+  const range = cycle ? cycleFetchRange(cycle) : { start: anchor, end: anchor }
   const { data: cycleTxns } = useTransactions(householdId, range)
   // CardCycleSummary's paidSoFar needs to see a payment settling this cycle
   // even though it's dated after this cycle closes (bills fall due only
@@ -55,15 +55,18 @@ export function CardDetailsScreen({ cardId, onClose }: Props) {
   // on the start/end strings, not this object's identity, so there's
   // nothing an identity-stable reference would buy here.
   const paymentSearchRange =
-    card && cycle ? { start: cycle.start, end: cycleOf(card, addDays(cycle.end, 1)).end } : range
+    card && cycle ? { start: range.start, end: cycleOf(card, addDays(cycle.end, 1)).end } : range
   const { data: widerCycleTxns } = useTransactions(householdId, paymentSearchRange)
   const categoryById = useMemo(() => new Map((categories ?? []).map((c) => [c.id, c])), [categories])
   const memberById = useMemo(() => new Map(members.map((m) => [m.id, m])), [members])
   const sharesByTxn = useMemo(() => sharesByTransaction(shares), [shares])
 
   const items = useMemo(
-    () => (cycleTxns ?? []).filter((t) => t.confirmed && (t.from_card_id === cardId || t.to_card_id === cardId)),
-    [cycleTxns, cardId],
+    () =>
+      (cycleTxns ?? []).filter(
+        (t) => t.confirmed && (t.from_card_id === cardId || t.to_card_id === cardId) && (!cycle || inCycle(t, cycle)),
+      ),
+    [cycleTxns, cardId, cycle],
   )
   // For CardCycleSummary only — includes the extra days past cycle close
   // where a payment settling it actually lands. cycleBill filters its own

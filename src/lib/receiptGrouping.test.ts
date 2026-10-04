@@ -22,6 +22,7 @@ function tx(id: string, amount: number, receiptId: string | null = null): Transa
     source: 'manual',
     source_key: null,
     receipt_id: receiptId,
+    posted_date: null,
   }
 }
 
