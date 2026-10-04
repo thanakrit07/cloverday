@@ -452,7 +452,7 @@ export function ReceiptSheet({ draft, onClose }: Props) {
 
       {!editing && (
         <div className="space-y-1.5">
-          <Label>Who bears</Label>
+          <Label>Responsible</Label>
           {/* One answer for the payment, inherited by every line in proportion
               (ADR-0015). A line that is borne differently -- the halved
               saucepan among unhalved snacks -- is corrected on that line

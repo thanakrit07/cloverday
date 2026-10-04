@@ -7,12 +7,22 @@ import { Label } from '@/components/ui/label'
 import { Drawer, DrawerContent, DrawerFooter, DrawerHeader, DrawerTitle } from '@/components/ui/drawer'
 import { DateField } from '@/components/DateField'
 import { InstrumentSelect, type Instrument } from '@/components/InstrumentSelect'
+import { addDays, format } from 'date-fns'
 import { useAccounts } from '@/lib/accounts'
+import { useCards } from '@/lib/cards'
+import { useTransactions } from '@/lib/transactions'
 import { useCategories } from '@/lib/categories'
 import { formatBaht } from '@/lib/format'
 import { useHousehold } from '@/lib/HouseholdContext'
 import { dayMonthLabel } from '@/lib/month'
-import { useRecordRepayment, useUnsettledShares, type UnsettledShare } from '@/lib/transactionShares'
+import {
+  repaymentCandidates,
+  useLinkRepayment,
+  useRecordRepayment,
+  useSettlements,
+  useUnsettledShares,
+  type UnsettledShare,
+} from '@/lib/transactionShares'
 import { cn } from '@/lib/utils'
 
 function today(): string {
@@ -35,7 +45,18 @@ export function SettleUpSheet({ open, onOpenChange, memberA, memberB }: Props) {
   const { data: shares } = useUnsettledShares(householdId)
   const { data: categories } = useCategories(householdId)
   const { data: accounts } = useAccounts(householdId)
+  const { data: cards } = useCards(householdId)
+  const { data: settlements } = useSettlements(householdId)
   const recordRepayment = useRecordRepayment(householdId)
+  const linkRepayment = useLinkRepayment(householdId)
+  // A transfer already in the ledger (a bank line, say) can stand as the repayment
+  // instead of Settle up making a second one: the last 120 days is far enough back.
+  const { data: recent } = useTransactions(householdId, {
+    start: format(addDays(new Date(), -120), 'yyyy-MM-dd'),
+    end: format(addDays(new Date(), 1), 'yyyy-MM-dd'),
+  })
+  const [useExisting, setUseExisting] = useState(false)
+  const [transferId, setTransferId] = useState<string | null>(null)
 
   const [selected, setSelected] = useState<Set<string>>(new Set())
   const [settledOn, setSettledOn] = useState(today())
@@ -86,6 +107,8 @@ export function SettleUpSheet({ open, onOpenChange, memberA, memberB }: Props) {
 
   useEffect(() => {
     if (!open) {
+      setUseExisting(false)
+      setTransferId(null)
       setInstrumentsTouched(false)
       setFrom(NO_INSTRUMENT)
       setTo(NO_INSTRUMENT)
@@ -105,6 +128,33 @@ export function SettleUpSheet({ open, onOpenChange, memberA, memberB }: Props) {
     if (item.note) return item.note
     if (item.description) return item.description
     return categories?.find((c) => c.id === item.category_id)?.name ?? 'Shared expense'
+  }
+
+  const ownerOf = (accountId: string | null, cardId: string | null) =>
+    accountId ? (accounts?.find((a) => a.id === accountId)?.owner_id ?? null) : cardId ? (cards?.find((c) => c.id === cardId)?.owner_id ?? null) : null
+  const candidates = useMemo(
+    () =>
+      repaymentCandidates(
+        (recent ?? []).filter((t) => t.kind === 'transfer'),
+        ownerOf,
+        payerId,
+        payeeId,
+        new Set((settlements ?? []).map((s) => s.id)),
+      ),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [recent, accounts, cards, settlements, payerId, payeeId],
+  )
+  const chosen = candidates.find((t) => t.id === transferId) ?? null
+
+  async function handleLink() {
+    if (!chosen) return
+    try {
+      await linkRepayment.mutateAsync({ shareIds: [...selected], transactionId: chosen.id })
+      onOpenChange(false)
+      toast.success(`Linked to the ${formatBaht(chosen.amount)} transfer on ${dayMonthLabel(chosen.date)}`)
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'Could not link the transfer.')
+    }
   }
 
   async function handleSave() {
@@ -171,7 +221,7 @@ export function SettleUpSheet({ open, onOpenChange, memberA, memberB }: Props) {
     )
   }
 
-  const canSave = selected.size > 0 && cash > 0 && Boolean(from.accountId || from.cardId) && Boolean(to.accountId || to.cardId)
+  const canSave = selected.size > 0 && cash > 0 && !useExisting && Boolean(from.accountId || from.cardId) && Boolean(to.accountId || to.cardId)
 
   return (
     <Drawer open={open} onOpenChange={onOpenChange}>
@@ -215,13 +265,56 @@ export function SettleUpSheet({ open, onOpenChange, memberA, memberB }: Props) {
               from somewhere to somewhere, so unlike an ordinary debt this
               can't be left with no cash changing hands even when the two
               sides net to zero. */}
+          {cash > 0 && (candidates.length > 0 || useExisting) && (
+            <div className="flex items-center justify-between gap-3 rounded-xl border px-3 py-2 text-sm">
+              <span>
+                {useExisting ? 'Using a transfer already in the ledger' : `${candidates.length} transfer${candidates.length === 1 ? '' : 's'} already in the ledger could be this`}
+              </span>
+              <Button size="sm" variant="outline" onClick={() => setUseExisting((v) => !v)}>
+                {useExisting ? 'Make a new one' : 'Pick one'}
+              </Button>
+            </div>
+          )}
+
+          {useExisting && (
+            <div className="space-y-1.5">
+              <ul className="max-h-40 space-y-1.5 overflow-y-auto">
+                {candidates.map((t) => (
+                  <li key={t.id}>
+                    <button
+                      type="button"
+                      onClick={() => setTransferId(t.id)}
+                      aria-pressed={t.id === transferId}
+                      className={cn(
+                        'flex w-full items-center justify-between gap-3 rounded-xl border px-3 py-2 text-left text-sm',
+                        t.id === transferId ? 'border-primary bg-primary/10' : 'border-border',
+                      )}
+                    >
+                      <span className="min-w-0">
+                        <span className="block truncate">{t.note || t.description || 'Transfer'}</span>
+                        <span className="block text-xs text-muted-foreground">{dayMonthLabel(t.date)}</span>
+                      </span>
+                      <span className="shrink-0 font-medium">{formatBaht(t.amount)}</span>
+                    </button>
+                  </li>
+                ))}
+              </ul>
+              {chosen && chosen.amount !== cash && (
+                <p className="text-xs text-muted-foreground">
+                  The transfer is {formatBaht(chosen.amount)}; these items come to {formatBaht(cash)}. The{' '}
+                  {formatBaht(Math.abs(chosen.amount - cash))} {chosen.amount > cash ? 'extra' : 'short'} is left as it is.
+                </p>
+              )}
+            </div>
+          )}
+
           {cash === 0 && selected.size > 0 && (
             <p className="rounded-xl bg-muted/50 px-3 py-2 text-sm text-muted-foreground">
               These net to ฿0, so there's nothing to transfer. Untick some items on one side to leave a balance.
             </p>
           )}
 
-          {cash > 0 && (
+          {cash > 0 && !useExisting && (
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label>{nameOf(payerId)} pays from</Label>
@@ -246,7 +339,7 @@ export function SettleUpSheet({ open, onOpenChange, memberA, memberB }: Props) {
             </div>
           )}
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className={cn('grid grid-cols-2 gap-3', useExisting && 'hidden')}>
             <div className="space-y-1.5">
               <Label htmlFor="settle-date">Paid on</Label>
               <DateField id="settle-date" value={settledOn} onChange={setSettledOn} />
@@ -264,9 +357,15 @@ export function SettleUpSheet({ open, onOpenChange, memberA, memberB }: Props) {
         </div>
 
         <DrawerFooter>
-          <Button onClick={handleSave} disabled={!canSave || recordRepayment.isPending}>
-            {cash > 0 ? `Record ${formatBaht(cash)} from ${nameOf(payerId)}` : 'Select a balance to settle'}
-          </Button>
+          {useExisting ? (
+            <Button onClick={handleLink} disabled={!chosen || selected.size === 0 || linkRepayment.isPending}>
+              Link to this transfer
+            </Button>
+          ) : (
+            <Button onClick={handleSave} disabled={!canSave || recordRepayment.isPending}>
+              {cash > 0 ? `Record ${formatBaht(cash)} from ${nameOf(payerId)}` : 'Select a balance to settle'}
+            </Button>
+          )}
         </DrawerFooter>
       </DrawerContent>
     </Drawer>

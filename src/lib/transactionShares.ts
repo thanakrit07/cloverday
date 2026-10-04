@@ -179,7 +179,7 @@ export async function syncTransactionShares(params: {
   if (insertError) throw insertError
 }
 
-const SHARE_KEYS = ['transaction_shares', 'unsettled_shares', 'settlements'] as const
+const SHARE_KEYS = ['transaction_shares', 'unsettled_shares', 'settlements', 'cleared_items'] as const
 
 // Exported for syncTransactionShares' own callers: that function is a plain
 // async write, not a mutation hook, so it can't invalidate its own cache —
@@ -243,6 +243,85 @@ export function useSettlements(householdId: string) {
   })
 }
 
+export const SETTLE_KEY_PREFIX = 'settle:'
+export const isSettleKey = (key: string | null | undefined) => Boolean(key?.startsWith(SETTLE_KEY_PREFIX))
+
+export interface TransferLike {
+  id: string
+  date: string
+  amount: number
+  note: string | null
+  description: string
+  from_account_id: string | null
+  from_card_id: string | null
+  to_account_id: string | null
+  to_card_id: string | null
+}
+
+/**
+ * Transfers already in the ledger that could stand as a repayment from one
+ * member to another: from an instrument of the payer's to one of the payee's,
+ * and not already clearing something. Newest first.
+ */
+export function repaymentCandidates<T extends TransferLike>(
+  transfers: T[],
+  ownerOf: (accountId: string | null, cardId: string | null) => string | null,
+  payerId: string,
+  payeeId: string,
+  alreadyUsed: ReadonlySet<string>,
+): T[] {
+  return transfers
+    .filter((t) => !alreadyUsed.has(t.id) && ownerOf(t.from_account_id, t.from_card_id) === payerId && ownerOf(t.to_account_id, t.to_card_id) === payeeId)
+    .sort((a, b) => (a.date < b.date ? 1 : -1))
+}
+
+// Points the chosen debts at a transfer that already exists, instead of making
+// a new one: a repayment is a real transfer either way, and the ledger stays the
+// only record. The amount may differ from what the debts come to (ADR-0003).
+export function useLinkRepayment(householdId: string) {
+  const queryClient = useQueryClient()
+  return useMutation({
+    mutationFn: async (input: { shareIds: string[]; transactionId: string }) => {
+      const { error } = await supabase
+        .from('transaction_shares')
+        .update({ settled_by_transaction_id: input.transactionId })
+        .in('id', input.shareIds)
+      if (error) throw error
+    },
+    onSuccess: () => invalidateShareQueries(queryClient, householdId),
+  })
+}
+
+export interface ClearedItem {
+  id: string
+  settled_by_transaction_id: string
+  amount: number
+  date: string
+  debt_kind: 'split' | 'borrow'
+  note: string | null
+  description: string
+  category_id: string | null
+  owes_member_id: string
+}
+
+/** What each repayment cleared: the debts that point at it, so an item knows which payment settled it. */
+export function useClearedItems(householdId: string, transferIds: string[]) {
+  return useQuery({
+    queryKey: ['cleared_items', householdId, transferIds],
+    enabled: transferIds.length > 0,
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('v_share_debts')
+        .select('id, settled_by_transaction_id, amount, date, debt_kind, note, description, category_id, owes_member_id')
+        .eq('household_id', householdId)
+        .in('settled_by_transaction_id', transferIds)
+        .order('date', { ascending: false })
+      if (error) throw error
+      return data as ClearedItem[]
+    },
+  })
+}
+
 // Records a repayment by creating a real transfer transaction and pointing
 // the chosen shares at it — the transfer *is* the settlement record, so it
 // shows up in the ledger like any other movement of money and there's
@@ -277,6 +356,9 @@ export function useRecordRepayment(householdId: string) {
           to_account_id: input.to.accountId,
           to_card_id: input.to.cardId,
           note: input.note,
+          // Marks this transfer as made by Settle up, so Undo knows it may delete it;
+          // a transfer that was already in the ledger and merely linked is only unlinked.
+          source_key: `${SETTLE_KEY_PREFIX}${crypto.randomUUID()}`,
         })
         .select('id')
         .single()
@@ -306,11 +388,20 @@ export function useUndoRepayment(householdId: string) {
   const queryClient = useQueryClient()
   return useMutation({
     mutationFn: async (transactionId: string) => {
-      const { error } = await supabase
-        .from('transactions')
-        .update({ deleted_at: new Date().toISOString() })
-        .eq('id', transactionId)
-      if (error) throw error
+      const { data: transfer, error: readError } = await supabase.from('transactions').select('source_key').eq('id', transactionId).single()
+      if (readError) throw readError
+      // Whatever the transfer is, the debts it cleared go back to owed.
+      const { error: unlinkError } = await supabase
+        .from('transaction_shares')
+        .update({ settled_by_transaction_id: null })
+        .eq('settled_by_transaction_id', transactionId)
+      if (unlinkError) throw unlinkError
+      // Only a transfer Settle up itself made is deleted: one that was already in the
+      // ledger (a bank line, say) is real money that moved, and stays.
+      if (isSettleKey(transfer.source_key)) {
+        const { error } = await supabase.from('transactions').update({ deleted_at: new Date().toISOString() }).eq('id', transactionId)
+        if (error) throw error
+      }
     },
     onSuccess: () => invalidateShareQueries(queryClient, householdId),
   })

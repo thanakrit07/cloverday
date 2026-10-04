@@ -306,7 +306,7 @@ export function RecurringRuleSheet({ rule, onClose, prefill }: Props) {
 
       {kind === 'expense' && (
         <div className="space-y-1.5">
-          <Label>Who bears</Label>
+          <Label>Responsible</Label>
           <PlanWhoBears members={members} selfId={self.id} value={whoBears} onChange={setWhoBears} referenceAmount={amount.value} />
         </div>
       )}

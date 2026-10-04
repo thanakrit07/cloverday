@@ -320,7 +320,7 @@ export function InstallmentSheet({ installment, onClose, prefill, supersedes }: 
       </div>
 
       <div className="space-y-1.5">
-        <Label>Who bears</Label>
+        <Label>Responsible</Label>
         <PlanWhoBears members={members} selfId={self.id} value={whoBears} onChange={setWhoBears} referenceAmount={previewMonthly} />
       </div>
 

@@ -89,7 +89,7 @@ export function WhoBearsField({ amount, members, selfId, value, onChange }: Prop
         onClick={() => setOpen((o) => !o)}
         className="flex w-full items-center justify-between gap-2 rounded-xl border px-3 py-2 text-sm"
       >
-        <span className="text-muted-foreground">Who bears</span>
+        <span className="text-muted-foreground">Responsible</span>
         <span className="flex items-center gap-1.5">
           {label}
           <ChevronDown className={cn('size-4 text-muted-foreground transition-transform', open && 'rotate-180')} />
