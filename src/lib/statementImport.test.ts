@@ -124,6 +124,12 @@ describe('applyCounterparties', () => {
     expect(unknown).toEqual(rec({ Counterparty: 'Nobody Known' }))
   })
 
+  it('gives a shop\'s category to what is spent there, not to money coming back from it', () => {
+    const [spent, back] = applyCounterparties([rec({ Counterparty: 'Demo Shop' }), rec({ Kind: 'income', Category: 'Other', Counterparty: 'Demo Shop' })], memory)
+    expect(spent.Category).toBe('Food')
+    expect(back.Category).toBe('Other')
+  })
+
   it('keeps the same rows in the same order, and leaves transfers alone', () => {
     const input = [rec({ Kind: 'transfer', Counterparty: 'demo person a' }), rec({ Counterparty: '' })]
     expect(applyCounterparties(input, memory)).toEqual(input)

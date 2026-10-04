@@ -311,6 +311,7 @@ export function applyCounterparties(records: Record<string, string>[], memory: R
         : { ...r, Kind: 'transfer', Category: '', 'To account or card': rule.target }
     }
     if (rule.role === 'member') return r['Kind'] === 'expense' ? { ...r, Owner: rule.memberName } : r
-    return { ...r, Category: rule.category }
+    // The category chosen for a shop is a spending category: money coming back from it keeps its own.
+    return r['Kind'] === 'expense' ? { ...r, Category: rule.category } : r
   })
 }
