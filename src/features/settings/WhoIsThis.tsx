@@ -5,7 +5,8 @@ import type { CategoryLike } from '@/lib/categoryGroups'
 import type { CounterpartyAnswer } from '@/lib/statementMemory'
 
 interface Props {
-  name: string
+  /** One name, or several that are getting the same answer. */
+  names: string[]
   accounts: { id: string; name: string }[]
   cards: { id: string; name: string }[]
   members: { id: string; display_name: string }[]
@@ -17,8 +18,8 @@ interface Props {
 
 type Role = CounterpartyAnswer['role']
 
-// ADR-0020: answered once, applied to every line with this name, and remembered.
-export function WhoIsThis({ name, accounts, cards, members, categories, saving, onCancel, onSave }: Props) {
+// ADR-0020: answered once, applied to every line with these names, and remembered.
+export function WhoIsThis({ names, accounts, cards, members, categories, saving, onCancel, onSave }: Props) {
   const [role, setRole] = useState<Role>('own_account')
   const [target, setTarget] = useState('')
 
@@ -34,7 +35,16 @@ export function WhoIsThis({ name, accounts, cards, members, categories, saving, 
   return (
     <div className="space-y-2 border-b bg-muted/40 p-3 text-xs">
       <p>
-        Who is <span className="font-medium">{name}</span>? Answer once and every line with this name follows it, now and on later statements.
+        {names.length === 1 ? (
+          <>
+            Who is <span className="font-medium">{names[0]}</span>?
+          </>
+        ) : (
+          <>
+            One answer for <span className="font-medium">{names.length} names</span>:
+          </>
+        )}{' '}
+        Every line with {names.length === 1 ? 'this name follows it' : 'these names follows it'}, now and on later statements.
       </p>
       <div className="flex flex-wrap items-center gap-2">
         <select
@@ -56,7 +66,7 @@ export function WhoIsThis({ name, accounts, cards, members, categories, saving, 
           {role === 'merchant' && <CategoryOptions categories={categories} kind="expense" />}
         </select>
         <Button size="sm" disabled={!target || saving} onClick={save}>
-          {saving ? 'Saving…' : 'Save'}
+          {saving ? 'Saving…' : names.length === 1 ? 'Save' : `Save for ${names.length} names`}
         </Button>
         <Button size="sm" variant="ghost" onClick={onCancel}>Cancel</Button>
       </div>

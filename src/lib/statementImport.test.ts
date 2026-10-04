@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { applyCounterparties, buildStatementRows, NEEDS_PLAN, normalizeStatementText, type CounterpartyRule, type StatementContext } from './statementImport'
+import { applyCounterparties, buildStatementRows, NEEDS_PLAN, normalizeStatementText, unknownNames, type CounterpartyRule, type StatementContext } from './statementImport'
 
 const ctx = (existing: StatementContext['existing'] = []): StatementContext => ({
   accounts: [{ id: 'acc-kbank', name: 'กสิกร' }],
@@ -127,5 +127,23 @@ describe('applyCounterparties', () => {
   it('keeps the same rows in the same order, and leaves transfers alone', () => {
     const input = [rec({ Kind: 'transfer', Counterparty: 'demo person a' }), rec({ Counterparty: '' })]
     expect(applyCounterparties(input, memory)).toEqual(input)
+  })
+})
+
+describe('unknownNames', () => {
+  const line = (counterparty: string, amount: number, status: 'new' | 'imported' | 'review' = 'new') => ({ counterparty, amount, status })
+  const rows = [line('Demo Person A', 100), line('demo  person a', 50), line('Demo Person B', 900), line('Demo Person C', 10), line('Demo Person C', 10), line('', 5), line('Demo Person D', 1, 'imported')]
+
+  it('lists each name once with its lines and total, the commonest first', () => {
+    expect(unknownNames(rows, new Map()).map((u) => [u.name, u.count, u.total])).toEqual([
+      ['Demo Person A', 2, 150],
+      ['Demo Person C', 2, 20],
+      ['Demo Person B', 1, 900],
+    ])
+  })
+
+  it('leaves out names already answered, lines without a name, and lines already imported', () => {
+    const known = new Map([['demo person b', {}]])
+    expect(unknownNames(rows, known).map((u) => u.name)).toEqual(['Demo Person A', 'Demo Person C'])
   })
 })

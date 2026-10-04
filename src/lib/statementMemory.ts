@@ -183,21 +183,23 @@ export type CounterpartyAnswer =
   | { role: 'member'; memberId: string }
   | { role: 'merchant'; categoryId: string }
 
-export function useSaveCounterparty(householdId: string, createdBy: string) {
+/** One answer for any number of names, saved together. */
+export function useSaveCounterparties(householdId: string, createdBy: string) {
   const queryClient = useQueryClient()
   return useMutation({
-    mutationFn: async ({ name, answer }: { name: string; answer: CounterpartyAnswer }) => {
+    mutationFn: async ({ names, answer }: { names: string[]; answer: CounterpartyAnswer }) => {
+      const keys = [...new Set(names.map(normalizeStatementText))]
       const { error } = await supabase.from('counterparties').upsert(
-        {
+        keys.map((name_key) => ({
           household_id: householdId,
-          name_key: normalizeStatementText(name),
+          name_key,
           role: answer.role,
           account_id: answer.role === 'own_account' ? answer.accountId : null,
           card_id: answer.role === 'own_account' ? answer.cardId : null,
           member_id: answer.role === 'member' ? answer.memberId : null,
           category_id: answer.role === 'merchant' ? answer.categoryId : null,
           created_by: createdBy,
-        },
+        })),
         { onConflict: 'household_id,name_key' },
       )
       if (error) throw error
