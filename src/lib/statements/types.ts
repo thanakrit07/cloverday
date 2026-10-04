@@ -1,7 +1,7 @@
 // What a statement parser hands back: lines of text in, structured lines out.
 // Nothing here knows about the database, accounts or categories (stage.ts does).
 
-export type Layout = 'cardx' | 'ktc' | 'uob' | 'kbank'
+export type Layout = 'cardx' | 'ktc' | 'uob' | 'kbank' | 'kept'
 
 export interface StatementLine {
   /** 1-based position in the text the parser was given, for pointing at a line. */

@@ -36,6 +36,7 @@ const LAYOUT_INSTRUMENTS: Record<Layout, string[]> = {
   ktc: ['KTC'],
   uob: ['UOB Premier', 'UOB Cash Plus'],
   kbank: ['กสิกร'],
+  kept: ['Kept กาย'],
 }
 
 interface FileState {

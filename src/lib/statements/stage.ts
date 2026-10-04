@@ -91,7 +91,11 @@ const KEYWORDS: [RegExp, string][] = [
 
 /** "โอนไป SCB X1234 <name>" or "จาก X1234 <name>": the name, without the trailing +s. */
 const COUNTERPARTY = /(?:โอนไป|จาก)\s+(?:[A-Za-zก-๙]{2,12}\s+)?X\w{3,4}\s+(\S.*?)\s*\+*\s*$/
-function counterpartyOf(text: string): string | null {
+// Kept prints where money went as a bank and a partly hidden account ("KBANK 1xx-2-xxx45-6")
+// or a hidden phone number, with the name on a later line the parser folds into the text.
+const KEPT_COUNTERPARTY = /\b[A-Za-z]{2,5}\s+[0-9xX]{3}-[0-9xX]-[0-9xX]{5}-[0-9xX]|\b[0-9xX]{3}-[0-9xX]{3}-[0-9]{4}\b/
+function counterpartyOf(text: string, layout: string): string | null {
+  if (layout === 'kept') return KEPT_COUNTERPARTY.exec(text)?.[0] ?? null
   return COUNTERPARTY.exec(text)?.[1].trim() || null
 }
 
@@ -101,6 +105,7 @@ function guessCategory(text: string, hints: ReadonlyMap<string, string>): string
   return KEYWORDS.find(([re]) => re.test(text))?.[1] ?? 'Other'
 }
 
+const isBank = (layout: string) => layout === 'kbank' || layout === 'kept'
 const days = (a: string, b: string) => Math.abs(Date.parse(a) - Date.parse(b)) / 86_400_000
 const PLAN_WINDOW_DAYS = 20
 
@@ -119,7 +124,7 @@ export function stageStatements(files: StageInput[], ctx: StageContext): { rows:
   // received" inside one is already recorded from the bank's side.
   const bankWindows = new Map<string, [string, string]>()
   for (const f of files) {
-    if (f.result.layout === 'kbank' && f.result.periodStart && f.result.periodEnd) bankWindows.set(f.instrument, [f.result.periodStart, f.result.periodEnd])
+    if (isBank(f.result.layout) && f.result.periodStart && f.result.periodEnd) bankWindows.set(f.instrument, [f.result.periodStart, f.result.periodEnd])
   }
   const bankCovers = (account: string, date: string) => {
     const w = bankWindows.get(account)
@@ -145,9 +150,9 @@ export function stageStatements(files: StageInput[], ctx: StageContext): { rows:
   for (const { instrument, result } of files) {
     for (const l of result.lines) {
       if (dropped.has(l)) continue
-      const base = { date: l.date, postedDate: l.postedDate, amount: l.amount, text: l.text, statement: instrument, counterparty: result.layout === 'kbank' ? counterpartyOf(l.text) : null }
+      const base = { date: l.date, postedDate: l.postedDate, amount: l.amount, text: l.text, statement: instrument, counterparty: isBank(result.layout) ? counterpartyOf(l.text, result.layout) : null }
 
-      if (result.layout === 'kbank') {
+      if (isBank(result.layout)) {
         if (l.direction === 'debit') {
           const card = BANK_CARD_PAYMENTS.find((p) => p.re.test(l.text))
           if (card) rows.push({ ...base, kind: 'transfer', category: '', from: instrument, to: card.to, needsPlan: false })

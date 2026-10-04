@@ -12,6 +12,8 @@ export const STRUCTURAL_WORDS: ReadonlySet<string> = new Set(
     // months on UOB lines
     'JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC',
     // bank statements: types, channels, bank codes
+    // Kept columns
+    'DATE', 'TIME', 'TRANSACTION', 'WITHDRAWAL', 'DEPOSIT', 'CHANNEL', 'THB', 'ENDING', 'PROMPTPAY',
     'K', 'PLUS', 'KBANK', 'BAY', 'SCB', 'KTB', 'TTB', 'KK', 'UOBT', 'TMRW', 'REF', 'EDC', 'MYQR', 'SHOP', 'INTERNET', 'MOBILE',
     'ยอดยกมา', 'รับโอนเงิน', 'รับโอนเงินอัตโนมัติ', 'โอนเงิน', 'ชำระเงิน', 'หักบัญชี', 'ฝากเงิน', 'โอนไป', 'จาก', 'เพื่อชำระ', 'พร้อมเพย์',
   ].map((w) => w.toUpperCase()),
