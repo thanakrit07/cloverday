@@ -1,9 +1,9 @@
-import { useEffect, type ReactNode } from 'react'
-import { createPortal } from 'react-dom'
+import type { ReactNode } from 'react'
+import { Dialog as DialogPrimitive } from 'radix-ui'
 import { ChevronLeft, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useIsDesktop } from '@/hooks/useIsDesktop'
-import { useLockDocumentScroll } from '@/hooks/useLockDocumentScroll'
+import { focusPageOnOpen } from '@/lib/focusPageOnOpen'
 import { usePushTransition } from '@/hooks/usePushTransition'
 import { cn } from '@/lib/utils'
 
@@ -30,7 +30,9 @@ interface Props {
 // push transition: slides in from the right, and Back or a swipe in from
 // the left edge slides it back out (usePushTransition).
 //
-// Portalled to `document.body` rather than rendered in place: an edit sheet
+// Built on Radix's Dialog primitive like FullScreenPage (scroll lock, focus
+// trap, Escape — see there), which also portals it to `document.body`
+// rather than rendering it in place: an edit sheet
 // is opened from inside a screen, which sits inside AppShell's own
 // scrollable `<main>` (unlike the FAB's add flow and Settings, both
 // siblings of AppShell in App.tsx). On iOS Safari, a `position: fixed`
@@ -48,72 +50,69 @@ interface Props {
 export function EntryPage({ title, onClose, children, footer, panelOpen, headerActions }: Props) {
   const isDesktop = useIsDesktop()
   const { close, handlers, pageStyle, backdropStyle } = usePushTransition(onClose, !isDesktop)
-  useLockDocumentScroll()
-
-  useEffect(() => {
-    if (!isDesktop) return
-    function onKeyDown(e: KeyboardEvent) {
-      if (e.key === 'Escape') onClose()
-    }
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
-  }, [isDesktop, onClose])
 
   if (isDesktop) {
-    return createPortal(
-      <div
-        className="fixed inset-0 z-30 flex items-center justify-center bg-black/40 p-6"
-        onClick={onClose}
-      >
-        <div
-          className="flex max-h-[85vh] w-full max-w-3xl overflow-hidden rounded-2xl border bg-background shadow-2xl"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <div className="flex min-w-0 flex-1 flex-col">
-            <header className="flex items-center gap-2 border-b px-4 py-3">
-              <h1 className="min-w-0 flex-1 truncate font-heading text-base font-semibold">{title}</h1>
-              {headerActions}
-              <Button variant="ghost" size="icon" onClick={onClose} aria-label="Close">
-                <X className="size-4" />
-              </Button>
-            </header>
-            <div className="flex-1 space-y-3 overflow-y-auto px-4 py-4">{children}</div>
-            {!panelOpen && <div className="border-t px-4 py-3">{footer}</div>}
-          </div>
+    return (
+      <DialogPrimitive.Root open onOpenChange={(open) => !open && onClose()}>
+        <DialogPrimitive.Portal>
+          <DialogPrimitive.Overlay className="fixed inset-0 z-30 bg-black/40" />
+          <DialogPrimitive.Content
+            aria-describedby={undefined}
+            onOpenAutoFocus={focusPageOnOpen}
+            className="fixed top-1/2 left-1/2 z-30 flex max-h-[85vh] w-[calc(100%-3rem)] max-w-3xl -translate-x-1/2 -translate-y-1/2 overflow-hidden rounded-2xl border bg-background shadow-2xl outline-none"
+          >
+            <div className="flex min-w-0 flex-1 flex-col">
+              <header className="flex items-center gap-2 border-b px-4 py-3">
+                <DialogPrimitive.Title className="min-w-0 flex-1 truncate font-heading text-base font-semibold">{title}</DialogPrimitive.Title>
+                {headerActions}
+                <Button variant="ghost" size="icon" onClick={onClose} aria-label="Close">
+                  <X className="size-4" />
+                </Button>
+              </header>
+              <div className="flex-1 space-y-3 overflow-y-auto px-4 py-4">{children}</div>
+              {!panelOpen && <div className="border-t px-4 py-3">{footer}</div>}
+            </div>
 
-          {panelOpen && (
-            <div className="w-72 shrink-0 overflow-y-auto border-l bg-popover p-3">{footer}</div>
-          )}
-        </div>
-      </div>,
-      document.body,
+            {panelOpen && (
+              <div className="w-72 shrink-0 overflow-y-auto border-l bg-popover p-3">{footer}</div>
+            )}
+          </DialogPrimitive.Content>
+        </DialogPrimitive.Portal>
+      </DialogPrimitive.Root>
     )
   }
 
-  return createPortal(
-    <div className="fixed inset-0 z-30 touch-pan-y" {...handlers}>
-      <div className="absolute inset-0 bg-black" style={backdropStyle} aria-hidden />
-      <div className="absolute inset-0 flex flex-col bg-background" style={pageStyle}>
-        <header className="sticky top-0 flex items-center gap-2 border-b bg-background px-2 pt-[calc(env(safe-area-inset-top)+0.5rem)] pb-2">
-          <Button variant="ghost" size="icon" onClick={close} aria-label="Back">
-            <ChevronLeft className="size-5" />
-          </Button>
-          <h1 className="min-w-0 flex-1 truncate font-heading text-sm font-medium">{title}</h1>
-          {headerActions}
-        </header>
-        <div className="flex-1 space-y-3 overflow-y-auto overscroll-contain px-4 pt-3 pb-4">{children}</div>
-        <div
-          className={cn(
-            'px-4 pt-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] transition-[min-height]',
-            panelOpen
-              ? 'min-h-[40vh] rounded-t-2xl border-t bg-popover shadow-[0_-8px_20px_-6px_rgb(0_0_0_/_0.15)]'
-              : 'border-t bg-background',
-          )}
+  return (
+    <DialogPrimitive.Root open onOpenChange={(open) => !open && close()}>
+      <DialogPrimitive.Portal>
+        <DialogPrimitive.Overlay className="fixed inset-0 z-30 bg-black" style={backdropStyle} />
+        <DialogPrimitive.Content
+          aria-describedby={undefined}
+          onOpenAutoFocus={focusPageOnOpen}
+          className="fixed inset-0 z-30 flex touch-pan-y flex-col bg-background outline-none"
+          style={pageStyle}
+          {...handlers}
         >
-          {footer}
-        </div>
-      </div>
-    </div>,
-    document.body,
+          <header className="sticky top-0 flex items-center gap-2 border-b bg-background px-2 pt-[calc(env(safe-area-inset-top)+0.5rem)] pb-2">
+            <Button variant="ghost" size="icon" onClick={close} aria-label="Back">
+              <ChevronLeft className="size-5" />
+            </Button>
+            <DialogPrimitive.Title className="min-w-0 flex-1 truncate font-heading text-sm font-medium">{title}</DialogPrimitive.Title>
+            {headerActions}
+          </header>
+          <div className="flex-1 space-y-3 overflow-y-auto overscroll-contain px-4 pt-3 pb-4">{children}</div>
+          <div
+            className={cn(
+              'px-4 pt-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] transition-[min-height]',
+              panelOpen
+                ? 'min-h-[40vh] rounded-t-2xl border-t bg-popover shadow-[0_-8px_20px_-6px_rgb(0_0_0_/_0.15)]'
+                : 'border-t bg-background',
+            )}
+          >
+            {footer}
+          </div>
+        </DialogPrimitive.Content>
+      </DialogPrimitive.Portal>
+    </DialogPrimitive.Root>
   )
 }
