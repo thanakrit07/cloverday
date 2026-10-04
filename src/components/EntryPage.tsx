@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom'
 import { ChevronLeft, X } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { useIsDesktop } from '@/hooks/useIsDesktop'
+import { useLockDocumentScroll } from '@/hooks/useLockDocumentScroll'
 import { cn } from '@/lib/utils'
 
 interface Props {
@@ -114,6 +115,7 @@ function useEdgeSwipeToDismiss(onDismiss: () => void, enabled: boolean) {
 export function EntryPage({ title, onClose, children, footer, panelOpen, headerActions }: Props) {
   const isDesktop = useIsDesktop()
   const { offset, handlers } = useEdgeSwipeToDismiss(onClose, !isDesktop)
+  useLockDocumentScroll()
 
   useEffect(() => {
     if (!isDesktop) return
@@ -168,7 +170,7 @@ export function EntryPage({ title, onClose, children, footer, panelOpen, headerA
           <h1 className="min-w-0 flex-1 truncate font-heading text-sm font-medium">{title}</h1>
           {headerActions}
         </header>
-        <div className="flex-1 space-y-3 overflow-y-auto px-4 pt-3 pb-4">{children}</div>
+        <div className="flex-1 space-y-3 overflow-y-auto overscroll-contain px-4 pt-3 pb-4">{children}</div>
         <div
           className={cn(
             'px-4 pt-3 pb-[calc(env(safe-area-inset-bottom)+0.75rem)] transition-[min-height]',
