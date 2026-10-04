@@ -54,12 +54,17 @@ function ThemeToggle() {
   )
 }
 
-export function SettingsScreen() {
+export function SettingsScreen({
+  statementOpen,
+  onStatementOpenChange: setStatementOpen,
+}: {
+  statementOpen: boolean
+  onStatementOpenChange: (open: boolean) => void
+}) {
   const { self, members } = useHousehold()
   const [categoriesOpen, setCategoriesOpen] = useState(false)
   const [presetsOpen, setPresetsOpen] = useState(false)
   const [importOpen, setImportOpen] = useState<'full' | 'transactions' | null>(null)
-  const [statementOpen, setStatementOpen] = useState(false)
   const [passwordOpen, setPasswordOpen] = useState(false)
 
   // Clear the local cache first: signing out re-renders into the auth screen,

@@ -79,7 +79,10 @@ function SignedInApp({ self }: { self: HouseholdMember }) {
   // ADR-0017. The file is the flow's identity: setting a new one restarts it,
   // clearing it ends it, and nothing else about a scan lives out here.
   const [scannedBill, setScannedBill] = useState<File | null>(null)
-  const [settingsOpen, setSettingsOpen] = useState(false)
+  // In the URL, so a refresh (or Back) lands on the same page: '' is closed,
+  // 'main' is Settings itself, 'statements' is Import statement inside it —
+  // the one sub-page long enough to be worth reopening where it was.
+  const [settingsPage, setSettingsPage] = useUrlState('settings', '')
   const [viewingAccountId, setViewingAccountId] = useState<string | null>(null)
   const [viewingCardId, setViewingCardId] = useState<string | null>(null)
   const [search, setSearch] = useState('')
@@ -132,7 +135,7 @@ function SignedInApp({ self }: { self: HouseholdMember }) {
         onTabChange={(t) => setTab(t)}
         onQuickAdd={() => setQuickAddOpen(true)}
         onScanBill={setScannedBill}
-        onOpenSettings={() => setSettingsOpen(true)}
+        onOpenSettings={() => setSettingsPage('main')}
         search={search}
         onSearchChange={setSearch}
         filterActive={isRecordsFilterActive(filter)}
@@ -201,9 +204,12 @@ function SignedInApp({ self }: { self: HouseholdMember }) {
         />
       )}
       {scannedBill && <ScanBillFlow file={scannedBill} onDone={() => setScannedBill(null)} />}
-      {settingsOpen && (
-        <FullScreenPage title="Settings" onClose={() => setSettingsOpen(false)}>
-          <SettingsScreen />
+      {settingsPage !== '' && (
+        <FullScreenPage title="Settings" onClose={() => setSettingsPage('')}>
+          <SettingsScreen
+            statementOpen={settingsPage === 'statements'}
+            onStatementOpenChange={(open) => setSettingsPage(open ? 'statements' : 'main')}
+          />
         </FullScreenPage>
       )}
       {viewingAccountId && (
