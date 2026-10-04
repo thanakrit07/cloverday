@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
+import { CategoryOptions } from '@/components/CategoryOptions'
 import { Checkbox } from '@/components/ui/checkbox'
 import { useAccounts } from '@/lib/accounts'
 import { useCards } from '@/lib/cards'
@@ -397,9 +398,7 @@ export function StatementImportScreen({ onClose }: { onClose: () => void }) {
             onChange={(e) => e.target.value && setCategory(selectedLines, e.target.value)}
           >
             <option value="">Set category…</option>
-            {liveCategories.map((c) => (
-              <option key={c.id} value={c.id}>{c.kind === 'income' ? '↓ ' : ''}{c.name}</option>
-            ))}
+            <CategoryOptions categories={liveCategories} />
           </select>
         </div>
       )}
@@ -471,9 +470,7 @@ export function StatementImportScreen({ onClose }: { onClose: () => void }) {
                         value={r.categoryId ?? ''}
                         onChange={(e) => setCategory([r.line], e.target.value)}
                       >
-                        {liveCategories.filter((c) => c.kind === r.kind).map((c) => (
-                          <option key={c.id} value={c.id}>{c.name}</option>
-                        ))}
+                        <CategoryOptions categories={liveCategories} kind={r.kind as 'income' | 'expense'} />
                       </select>
                     )}
                   </td>
