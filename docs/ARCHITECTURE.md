@@ -27,7 +27,7 @@ Supabase Postgres    ← schema, RLS, triggers, RPCs (migrations 0001…)
 |---|---|
 | `src/App.tsx` | Auth gate + tab routing + URL state wiring |
 | `src/components/layout/AppShell.tsx` | Header (month/person filter), bottom nav, FAB |
-| `src/components/` | Shared widgets: `Keypad`, `AmountField`, `InstrumentSelect`, `OwnerSelect`, `MonthYearPicker`, `SwipeableRow` |
+| `src/components/` | Shared widgets: `Keypad`, `AmountField`, `InstrumentSelect`, `OwnerSelect`, `MonthYearPicker`, `SwipeableRow`, and the full-screen page shells `FullScreenPage` / `EntryPage` (Radix Dialog + `usePushTransition`) |
 | `src/components/ui/` | shadcn/vaul primitives (button, drawer, dialog, …) — mostly generated, edited sparingly |
 | `src/features/<name>/` | One folder per screen/feature: `transactions`, `home` (Overview), `accounts`, `installments`, `plan`, `categories`, `settings` |
 | `src/lib/*.ts` | Data hooks: one file per table/concept (`transactions.ts`, `cards.ts`, `categories.ts`, …). Each exports `useXxx` query hooks + `useCreate/Update/DeleteXxx` mutations |
@@ -55,6 +55,33 @@ Supabase Postgres    ← schema, RLS, triggers, RPCs (migrations 0001…)
 - **Money never comes from the keyboard**: amount fields use the in-app
   `Keypad` (`useAmountEntry` hook) — the iOS system keyboard shoves the sheet
   around, which is why this exists.
+
+## UI building blocks: use what exists before writing your own
+
+Every piece of UI code we write ourselves is code we maintain ourselves —
+including the iOS quirks, accessibility and edge cases a library has already
+dealt with. So, in this order:
+
+1. **An existing component in this repo** — `src/components/` (e.g.
+   `FullScreenPage`, `EntryPage`, `SwipeableRow`, `Keypad`) or a feature
+   folder that already solves the same problem.
+2. **A shadcn/ui component** already in `src/components/ui/`, or one added
+   with the shadcn CLI.
+3. **The primitive underneath it** — `radix-ui` (or `vaul`, `sonner`,
+   `react-day-picker`, already dependencies) — when the shadcn version's
+   styling doesn't fit but its behaviour does. `FullScreenPage` and
+   `EntryPage` are the example: unstyled Radix `Dialog` underneath, so
+   scroll lock, focus trap, Escape and modal semantics come for free, with
+   only the native-app slide/swipe (`usePushTransition`) written by us.
+4. **Writing it from scratch** (a hand-rolled overlay, scroll lock, focus
+   management, gesture or dropdown, or a new npm dependency) — **ask first**.
+   Say what the existing options are, why none of them fits, and what the
+   new code will have to keep maintaining. Don't build it until that's
+   agreed.
+
+The scroll-lock bug this rule came out of: `FullScreenPage` used to be a
+hand-rolled `createPortal` div, so opening Settings on a phone still let
+the page behind it scroll — something every shadcn overlay already handles.
 
 ## How to…
 
