@@ -12,20 +12,21 @@ import { formatBaht } from '@/lib/format'
 import { useHousehold } from '@/lib/HouseholdContext'
 import { useInstallments } from '@/lib/installments'
 import { parseCsvText } from '@/lib/import/parseCsv'
-import { applyCounterparties, applyStatementRows, buildStatementRows, normalizeStatementText, SHARED, type StatementRow } from '@/lib/statementImport'
+import { applyCounterparties, applyStatementRows, buildStatementRows, normalizeStatementText, SHARED, unknownNames, type StatementRow } from '@/lib/statementImport'
 import {
   hintMap,
   recordStatementFiles,
   rulesFromRows,
   useCategoryHints,
   useCounterparties,
-  useSaveCounterparty,
+  useSaveCounterparties,
   useStatementFiles,
   type NewStatementFile,
 } from '@/lib/statementMemory'
 import { useTransactions } from '@/lib/transactions'
 import { cn } from '@/lib/utils'
 import { StatementPdfSource, type StatementWarning } from './StatementPdfSource'
+import { UnknownNames } from './UnknownNames'
 import { WhoIsThis } from './WhoIsThis'
 import { removeSuperseded, useSupersededCandidates, type OrphanConversion } from '@/lib/superseded'
 
@@ -75,7 +76,7 @@ export function StatementImportScreen({ onClose }: { onClose: () => void }) {
   const { data: seenFiles } = useStatementFiles(householdId)
   const { data: counterpartyRows } = useCounterparties(householdId)
   const { data: hintRows } = useCategoryHints(householdId)
-  const saveCounterparty = useSaveCounterparty(householdId, self.id)
+  const saveCounterparties = useSaveCounterparties(householdId, self.id)
   const [draft] = useState(loadDraft)
   // Credits that turn a purchase into an installment, whose purchase is not in this
   // import: the expense already in the ledger is offered for removal, never ticked for you.
@@ -97,7 +98,9 @@ export function StatementImportScreen({ onClose }: { onClose: () => void }) {
   // The files this review was built from, recorded when Apply succeeds.
   const [fileMeta, setFileMeta] = useState<NewStatementFile[]>(draft?.files ?? [])
   // A name the household is being asked about ("who is this?").
-  const [asking, setAsking] = useState<string | null>(null)
+  const [asking, setAsking] = useState<string[] | null>(null)
+  // Names ticked in the "Who are these?" list, answered together.
+  const [pickedNames, setPickedNames] = useState<Set<string>>(new Set())
 
   useEffect(() => {
     if (!csvRows) return
@@ -205,6 +208,7 @@ export function StatementImportScreen({ onClose }: { onClose: () => void }) {
 
   // A file column only helps when there is more than one file to tell apart.
   const showFile = new Set(rows.map((r) => r.file).filter(Boolean)).size > 1
+  const unknown = unknownNames(rows, rules)
   const visible = rows.filter((r) => TAB_OF[r.status] === tab)
   const actionable = (r: StatementRow) => r.status !== 'error' && r.status !== 'imported'
   const effective = (r: StatementRow): StatementRow => {
@@ -320,18 +324,27 @@ export function StatementImportScreen({ onClose }: { onClose: () => void }) {
           ))}
         </div>
       )}
+      {!asking && unknown.length > 0 && (
+        <UnknownNames
+          names={unknown}
+          selected={pickedNames}
+          onChange={setPickedNames}
+          onAnswer={() => setAsking(unknown.filter((n) => pickedNames.has(n.key)).map((n) => n.name))}
+        />
+      )}
       {asking && (
         <WhoIsThis
-          name={asking}
+          names={asking}
           accounts={accounts ?? []}
           cards={cards ?? []}
           members={members}
           categories={liveCategories}
-          saving={saveCounterparty.isPending}
+          saving={saveCounterparties.isPending}
           onCancel={() => setAsking(null)}
           onSave={async (answer) => {
             try {
-              await saveCounterparty.mutateAsync({ name: asking, answer })
+              await saveCounterparties.mutateAsync({ names: asking, answer })
+              setPickedNames(new Set())
               setAsking(null)
             } catch (e) {
               toast.error(e instanceof Error ? e.message : 'Could not save')
@@ -457,7 +470,7 @@ export function StatementImportScreen({ onClose }: { onClose: () => void }) {
                   <td className="max-w-64 p-2">
                     <div className="truncate" title={r.description}>{r.description}</div>
                     {r.counterparty && actionable(r) && !rules.has(normalizeStatementText(r.counterparty)) && (
-                      <button className="text-primary underline underline-offset-2" onClick={() => setAsking(r.counterparty)}>
+                      <button className="text-primary underline underline-offset-2" onClick={() => setAsking([r.counterparty])}>
                         Who is {r.counterparty}?
                       </button>
                     )}
