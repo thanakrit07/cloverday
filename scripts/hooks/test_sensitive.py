@@ -23,6 +23,10 @@ class Findings(unittest.TestCase):
         self.assertEqual(sensitive.findings("x 1234567890123456 y", []), [])
         self.assertEqual(sensitive.findings("x 000000000000 y", []), [])
 
+    def test_ignores_a_uuid_whose_last_block_is_twelve_digits(self):
+        self.assertEqual(sensitive.findings("('10000000-0000-0000-0000-000000000101', 'x')", []), [])
+        self.assertEqual(len(sensitive.findings(f"('10000000-0000-0000-0000-000000000101', '{REAL_LOOKING}')", [])), 1)
+
     def test_ignores_dates_amounts_and_short_numbers(self):
         self.assertEqual(sensitive.findings("2026-09-29 12:30 1,234,567.89 ฿12345 0812345678", []), [])
 

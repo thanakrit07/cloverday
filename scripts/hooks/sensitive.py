@@ -26,6 +26,8 @@ DIGITS = re.compile(r"(?<!\d)(?:\d{12,}|\d{4}(?:[ -]\d{4}){2,}\d*)(?!\d)")
 # เลขที่ดูออกว่าแต่ง: ตัวเดียวซ้ำ หรือ 1234567890 วนซ้ำ
 FAKE = re.compile(r"^(?:(\d)\1+|(?:1234567890)+\d{0,9})$")
 SKIP_FILES = ("package-lock.json",)
+# UUID (ข้อมูลจำลองใน seed.sql ลงท้ายด้วยเลข 12 หลัก) ไม่ใช่เลขบัตร
+UUID = re.compile(r"[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}")
 
 
 def git_dir() -> str:
@@ -48,7 +50,7 @@ def findings(text: str, terms: list[str] | None = None) -> list[tuple[int, str]]
     terms = local_terms() if terms is None else terms
     out: list[tuple[int, str]] = []
     for number, line in enumerate(text.splitlines(), 1):
-        for m in DIGITS.finditer(line):
+        for m in DIGITS.finditer(UUID.sub("", line)):
             digits = re.sub(r"\D", "", m.group(0))
             if len(digits) >= 12 and not FAKE.match(digits):
                 out.append((number, f"เลขต่อเนื่อง {len(digits)} หลัก (เลขบัตร/บัญชี?) — ถ้าเป็นตัวอย่างให้ใช้เลขแต่ง เช่น 1234567890123456"))
