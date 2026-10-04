@@ -7,7 +7,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { formatBaht } from '@/lib/format'
 import { useHousehold } from '@/lib/HouseholdContext'
-import { useCreatePreset, usePresets, type PresetInput } from '@/lib/presets'
+import { useCreatePreset, type PresetInput } from '@/lib/presets'
 
 // D27: "Save as preset" on the entry form keeps what is typed there. The
 // amount is opt-in — most spending isn't the same price twice, and a preset
@@ -22,17 +22,13 @@ export function SavePresetDialog({
   onClose: () => void
 }) {
   const { householdId, self } = useHousehold()
-  const { data: presets } = usePresets(householdId, self.id)
   const create = useCreatePreset(householdId, self.id)
   const [name, setName] = useState(defaultName.slice(0, 40))
   const [withAmount, setWithAmount] = useState(false)
 
   async function handleSave() {
     try {
-      await create.mutateAsync({
-        input: { ...draft, name: name.trim(), amount: withAmount ? draft.amount : null },
-        sortOrder: Math.max(-1, ...(presets ?? []).map((p) => p.sort_order)) + 1,
-      })
+      await create.mutateAsync({ ...draft, name: name.trim(), amount: withAmount ? draft.amount : null })
       toast.success(`Preset "${name.trim()}" saved`)
       onClose()
     } catch (err) {

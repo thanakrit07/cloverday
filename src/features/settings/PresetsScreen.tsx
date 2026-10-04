@@ -2,12 +2,9 @@ import { useState } from 'react'
 import { closestCenter, DndContext, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core'
 import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { GripHorizontal, Pencil, Plus } from 'lucide-react'
+import { GripHorizontal, Plus } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
-import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
-import { Input } from '@/components/ui/input'
-import { Label } from '@/components/ui/label'
 import { SwipeableRow } from '@/components/SwipeableRow'
 import { useAccounts } from '@/lib/accounts'
 import { useCards } from '@/lib/cards'
@@ -15,21 +12,19 @@ import { categoryPath, useCategories, type Category } from '@/lib/categories'
 import { CategoryIcon } from '@/lib/categoryIcons'
 import { formatBaht } from '@/lib/format'
 import { useHousehold } from '@/lib/HouseholdContext'
+import { PresetSheet } from './PresetSheet'
 import {
   suggestPresets,
   useCreatePreset,
   useDeletePreset,
   usePresetHistory,
   usePresets,
-  useRenamePreset,
   useReorderPresets,
   type Preset,
   type PresetInput,
 } from '@/lib/presets'
 
-// D27: rename, reorder, delete, and add from suggestions. What a preset fills
-// is changed by saving a new one from the entry form, which is already the
-// form for exactly those fields (ADR-0021).
+// D27: create, edit, reorder and delete presets, and add from suggestions.
 export function PresetsScreen() {
   const { householdId, self } = useHousehold()
   const { data: presets } = usePresets(householdId, self.id)
@@ -40,7 +35,7 @@ export function PresetsScreen() {
   const create = useCreatePreset(householdId, self.id)
   const remove = useDeletePreset(householdId)
   const reorder = useReorderPresets(householdId)
-  const [renaming, setRenaming] = useState<Preset | null>(null)
+  const [editing, setEditing] = useState<Preset | 'new' | null>(null)
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }))
 
   const list = presets ?? []
@@ -78,10 +73,7 @@ export function PresetsScreen() {
   async function handleAdd(s: PresetInput) {
     const name = s.name || byId.get(s.category_id)?.name || 'Preset'
     try {
-      await create.mutateAsync({
-        input: { ...s, name: name.slice(0, 40) },
-        sortOrder: Math.max(-1, ...list.map((p) => p.sort_order)) + 1,
-      })
+      await create.mutateAsync({ ...s, name: name.slice(0, 40) })
     } catch (err) {
       toast.error(err instanceof Error ? err.message : 'Could not add the preset.')
     }
@@ -90,10 +82,15 @@ export function PresetsScreen() {
   return (
     <div className="mx-auto max-w-2xl space-y-6 p-4">
       <section className="space-y-2">
-        <p className="text-xs text-muted-foreground">
-          Tap one on the add-transaction form to fill it in. To make a new one, fill the form and tap the bookmark at
-          the top. Only you see your presets.
-        </p>
+        <div className="flex items-start gap-3">
+          <p className="flex-1 text-xs text-muted-foreground">
+            Tap one on the add-transaction form to fill it in. Only you see your presets.
+          </p>
+          <Button size="sm" variant="outline" onClick={() => setEditing('new')}>
+            <Plus className="size-4" />
+            New
+          </Button>
+        </div>
         {list.length === 0 ? (
           <p className="rounded-lg border border-dashed p-4 text-center text-sm text-muted-foreground">No presets yet.</p>
         ) : (
@@ -106,7 +103,7 @@ export function PresetsScreen() {
                     preset={p}
                     category={byId.get(p.category_id)}
                     subtitle={describe(p)}
-                    onRename={() => setRenaming(p)}
+                    onEdit={() => setEditing(p)}
                     onDelete={() => remove.mutate(p.id)}
                   />
                 ))}
@@ -141,7 +138,7 @@ export function PresetsScreen() {
         </section>
       )}
 
-      {renaming && <RenameDialog preset={renaming} onClose={() => setRenaming(null)} />}
+      {editing && <PresetSheet preset={editing === 'new' ? null : editing} onClose={() => setEditing(null)} />}
     </div>
   )
 }
@@ -150,13 +147,13 @@ function PresetRow({
   preset,
   category,
   subtitle,
-  onRename,
+  onEdit,
   onDelete,
 }: {
   preset: Preset
   category: Category | undefined
   subtitle: string
-  onRename: () => void
+  onEdit: () => void
   onDelete: () => void
 }) {
   const { attributes, listeners, setNodeRef, transform, transition, isDragging } = useSortable({ id: preset.id })
@@ -166,18 +163,17 @@ function PresetRow({
     <li ref={setNodeRef} style={style} className="overflow-hidden rounded-lg border bg-card">
       <SwipeableRow onDelete={onDelete}>
         <div className="flex items-center gap-1.5 px-2 py-2 text-sm">
-          <CategoryIcon icon={category?.icon ?? null} color={category?.color ?? null} className="size-4 shrink-0" />
-          <span className="min-w-0 flex-1">
-            <span className={category?.archived ? 'block truncate text-muted-foreground line-through' : 'block truncate'}>
-              {preset.name}
+          <button type="button" onClick={onEdit} className="flex min-w-0 flex-1 items-center gap-2 text-left">
+            <CategoryIcon icon={category?.icon ?? null} color={category?.color ?? null} className="size-4 shrink-0" />
+            <span className="min-w-0 flex-1">
+              <span className={category?.archived ? 'block truncate text-muted-foreground line-through' : 'block truncate'}>
+                {preset.name}
+              </span>
+              <span className="block truncate text-xs text-muted-foreground">
+                {category?.archived ? 'Category archived — hidden on the form' : subtitle}
+              </span>
             </span>
-            <span className="block truncate text-xs text-muted-foreground">
-              {category?.archived ? 'Category archived — hidden on the form' : subtitle}
-            </span>
-          </span>
-          <Button variant="ghost" size="icon" className="size-7 shrink-0" onClick={onRename} aria-label={`Rename ${preset.name}`}>
-            <Pencil className="size-3.5" />
-          </Button>
+          </button>
           <button
             {...attributes}
             {...listeners}
@@ -189,38 +185,5 @@ function PresetRow({
         </div>
       </SwipeableRow>
     </li>
-  )
-}
-
-function RenameDialog({ preset, onClose }: { preset: Preset; onClose: () => void }) {
-  const { householdId } = useHousehold()
-  const rename = useRenamePreset(householdId)
-  const [name, setName] = useState(preset.name)
-
-  async function handleSave() {
-    await rename.mutateAsync({ id: preset.id, name: name.trim() })
-    onClose()
-  }
-
-  return (
-    <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Rename preset</DialogTitle>
-        </DialogHeader>
-        <div className="space-y-1.5">
-          <Label htmlFor="preset-rename">Name</Label>
-          <Input id="preset-rename" value={name} maxLength={40} onChange={(e) => setName(e.target.value)} />
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
-            Cancel
-          </Button>
-          <Button onClick={handleSave} disabled={!name.trim() || rename.isPending}>
-            Save
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
   )
 }

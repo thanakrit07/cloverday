@@ -44,11 +44,14 @@ function useInvalidatePresets(householdId: string) {
 }
 
 export function useCreatePreset(householdId: string, memberId: string) {
+  const queryClient = useQueryClient()
   const invalidate = useInvalidatePresets(householdId)
   return useMutation({
     // Appended at the end: sort_order is only ever compared within one
     // member's list, so "after the largest" is enough.
-    mutationFn: async ({ input, sortOrder }: { input: PresetInput; sortOrder: number }) => {
+    mutationFn: async (input: PresetInput) => {
+      const current = queryClient.getQueryData<Preset[]>(['presets', householdId, memberId]) ?? []
+      const sortOrder = Math.max(-1, ...current.map((p) => p.sort_order)) + 1
       const { error } = await supabase
         .from('entry_presets')
         .insert({ ...input, household_id: householdId, member_id: memberId, sort_order: sortOrder })
@@ -58,11 +61,11 @@ export function useCreatePreset(householdId: string, memberId: string) {
   })
 }
 
-export function useRenamePreset(householdId: string) {
+export function useUpdatePreset(householdId: string) {
   const invalidate = useInvalidatePresets(householdId)
   return useMutation({
-    mutationFn: async ({ id, name }: { id: string; name: string }) => {
-      const { error } = await supabase.from('entry_presets').update({ name }).eq('id', id)
+    mutationFn: async ({ id, input }: { id: string; input: PresetInput }) => {
+      const { error } = await supabase.from('entry_presets').update(input).eq('id', id)
       if (error) throw error
     },
     onSuccess: invalidate,

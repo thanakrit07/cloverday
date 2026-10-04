@@ -38,14 +38,16 @@ Transaction; a chip that carried "split evenly" would raise a Debt on every tap
 without anyone deciding it. Transfers use a different form (from and to, no
 category) and would double the work for a case that was not asked for.
 
-**Presets are made from what was typed.** The bookmark on the form's header
-saves the current Kind, Category, note and Instrument under a name; the amount
-is included only when ticked, unticked by default. Settings → Presets renames,
-reorders and deletes, and lists up to five suggestions: a Category and note this
-person recorded at least three times in 90 days, with the newest Instrument and
-the amount only if it never varied. There is no editor for a preset's fields:
-the entry form already is that editor, so a changed preset is saved again from
-it.
+**Presets are made from what was typed, or from scratch.** The bookmark on the
+form's header saves the current Kind, Category, note and Instrument under a
+name; the amount is included only when ticked, unticked by default. Settings →
+Presets creates and edits presets on a page with the entry form's own rows and
+bottom panel, where only the name, Kind and Category are required: an empty
+amount fills no amount, and an unset Instrument leaves the form's last-used
+default in charge. The same screen reorders by drag, deletes by swipe, and lists
+up to five suggestions: a Category and note this person recorded at least three
+times in 90 days, with the newest Instrument and the amount only if it never
+varied.
 
 ## Considered and not done
 
