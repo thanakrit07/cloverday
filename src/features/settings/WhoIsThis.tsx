@@ -8,7 +8,7 @@ interface Props {
   name: string
   accounts: { id: string; name: string }[]
   cards: { id: string; name: string }[]
-  members: { id: string; display_name: string }[]
+  members?: { id: string; display_name: string }[]
   categories: CategoryLike[]
   saving: boolean
   onCancel: () => void
@@ -18,7 +18,7 @@ interface Props {
 type Role = CounterpartyAnswer['role']
 
 // ADR-0020: answered once, applied to every line with this name, and remembered.
-export function WhoIsThis({ name, accounts, cards, members, categories, saving, onCancel, onSave }: Props) {
+export function WhoIsThis({ name, accounts, cards, categories, saving, onCancel, onSave }: Props) {
   const [role, setRole] = useState<Role>('own_account')
   const [target, setTarget] = useState('')
 
@@ -45,14 +45,14 @@ export function WhoIsThis({ name, accounts, cards, members, categories, saving, 
             setTarget('')
           }}
         >
-          <option value="own_account">One of our accounts or cards</option>
-          <option value="member">A member of the household</option>
+          {/* Money to a person in the household is a transfer to their account, never an expense they bear:
+              their own statement shows it as money in, and a transfer is the one row both statements agree on. */}
+          <option value="own_account">An account or card of ours or a household member's</option>
           <option value="merchant">A shop or company</option>
         </select>
         <select className="h-8 rounded-md border bg-background px-2" value={target} onChange={(e) => setTarget(e.target.value)} aria-label="Which one">
           <option value="">Choose…</option>
           {role === 'own_account' && [...accounts, ...cards].map((x) => <option key={x.id} value={x.id}>{x.name}</option>)}
-          {role === 'member' && members.map((m) => <option key={m.id} value={m.id}>{m.display_name}</option>)}
           {role === 'merchant' && <CategoryOptions categories={categories} kind="expense" />}
         </select>
         <Button size="sm" disabled={!target || saving} onClick={save}>

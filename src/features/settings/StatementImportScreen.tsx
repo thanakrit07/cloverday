@@ -420,7 +420,7 @@ export function StatementImportScreen({ onClose }: { onClose: () => void }) {
               <th className="p-2">Description</th>
               <th className="p-2 text-right">Amount</th>
               <th className="p-2">Category</th>
-              <th className="p-2">Who</th>
+              <th className="p-2">Responsible</th>
               <th className="p-2">Status</th>
             </tr>
           </thead>
