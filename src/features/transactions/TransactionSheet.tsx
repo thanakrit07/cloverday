@@ -558,7 +558,9 @@ export function TransactionSheet({ open, onOpenChange, transaction, scan }: Prop
           <div className="flex-1">
             <EntryRow label="Date" active={panel.active === 'date'} onClick={() => panel.toggle('date')} value={dateRowLabel(date)} />
           </div>
-          {kind !== 'transfer' && !transaction && (
+          {/* A row already saved can still become an installment (it is then replaced by the plan);
+              turning it into a repeating rule is only offered while recording. */}
+          {kind !== 'transfer' && (!transaction || transaction.source === 'manual' || transaction.source === 'import') && (
             <div className="relative shrink-0">
               <Button
                 type="button"
@@ -571,6 +573,7 @@ export function TransactionSheet({ open, onOpenChange, transaction, scan }: Prop
               </Button>
               {repInstOpen && (
                 <div className="absolute right-0 bottom-full z-10 mb-1.5 w-40 space-y-1 rounded-lg border bg-popover p-1.5 shadow-md">
+                  {!transaction && (
                   <button
                     type="button"
                     onClick={() => {
@@ -582,6 +585,7 @@ export function TransactionSheet({ open, onOpenChange, transaction, scan }: Prop
                     <Repeat className="size-4 text-muted-foreground" />
                     Repeat
                   </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => {
@@ -673,6 +677,7 @@ export function TransactionSheet({ open, onOpenChange, transaction, scan }: Prop
         <InstallmentSheet
           installment={null}
           prefill={buildPrefill()}
+          supersedes={transaction?.id}
           onClose={() => {
             setCreating(null)
             onOpenChange(false)

@@ -28,6 +28,10 @@ export interface StagedRow {
 }
 
 export interface StageIssue {
+  /** What went wrong, for a caller that wants to act on it rather than just show it. */
+  code: 'orphan_conversion'
+  /** The day of the line the issue is about. */
+  date: string
   instrument: string
   reason: string
   text: string
@@ -147,7 +151,7 @@ export function stageStatements(files: StageInput[], ctx: StageContext): { rows:
         .filter((l) => l.direction === 'debit' && !dropped.has(l) && !l.installment && Math.abs(l.amount - credit.amount) < 0.005 && l.date <= credit.date)
         .sort((a, b) => (a.date < b.date ? 1 : -1))[0]
       if (purchase) dropped.add(purchase)
-      else issues.push({ instrument, reason: 'A credit that converts a purchase to an installment has no matching purchase in these files, so it was not imported', text: credit.text, amount: credit.amount })
+      else issues.push({ code: 'orphan_conversion', date: credit.date, instrument, reason: 'A credit that converts a purchase to an installment has no matching purchase in these files, so it was not imported', text: credit.text, amount: credit.amount })
     }
   }
 

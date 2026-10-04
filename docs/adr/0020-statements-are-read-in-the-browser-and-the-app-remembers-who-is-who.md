@@ -106,6 +106,16 @@ The household's own database now holds other people's names, in
 by the same policy as every other table and is the same place the transactions
 already live.
 
+A purchase that later becomes an installment is counted once. Within one import
+the staging rules cancel the purchase against the credit that converted it.
+When the purchase went in with an earlier statement, the credit finds nothing to
+cancel, and the review screen instead looks in the ledger for an expense of the
+same amount on that card in the 120 days before the credit and offers to remove
+it. It is never ticked for the household, because removing it is only right once
+the plan exists, and it is a soft delete like every other. From the other side, a
+saved expense can be turned into an installment from its edit screen; the plan
+then replaces it, and saving the plan removes the original.
+
 ## Considered options
 
 **Keep masking and tighten the rules.** Tried for a day. Each round fixed the
