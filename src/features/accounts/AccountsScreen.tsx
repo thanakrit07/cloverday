@@ -31,7 +31,7 @@ import { formatBaht } from '@/lib/format'
 import { useInstallments, usePostedPeriods, type Installment } from '@/lib/installments'
 import { ALL_TIME, dayMonthLabel } from '@/lib/month'
 import { useCreateTransaction, useTransactions, useUnconfirmedTransactions, type Transaction } from '@/lib/transactions'
-import { useSettlements, useUndoRepayment, useUnsettledShares } from '@/lib/transactionShares'
+import { useClearedItems, useSettlements, useUndoRepayment, useUnsettledShares } from '@/lib/transactionShares'
 import { groupByOwner } from '@/lib/ownerGroups'
 import { cn } from '@/lib/utils'
 import { SettleUpSheet } from '@/features/home/SettleUpSheet'
@@ -116,6 +116,8 @@ function BetweenUsSection() {
   }, [unsettled])
   const nameOf = (memberId: string) => members.find((m) => m.id === memberId)?.display_name ?? 'Someone'
   const recentSettlements = (settlements ?? []).slice(0, 5)
+  const { data: cleared } = useClearedItems(householdId, recentSettlements.map((s) => s.id))
+  const { data: categories } = useCategories(householdId)
 
   if (settlementRows.length === 0 && recentSettlements.length === 0) return null
 
@@ -176,6 +178,19 @@ function BetweenUsSection() {
                     {s.net_cleared !== s.amount ? ` · doesn't match linked debts (${formatBaht(s.net_cleared)})` : ''}
                     {s.note ? ` · ${s.note}` : ''}
                   </span>
+                  {/* Each debt knows which repayment cleared it, so say which. */}
+                  <ul className="mt-1 space-y-0.5 text-xs text-muted-foreground">
+                    {(cleared ?? [])
+                      .filter((c) => c.settled_by_transaction_id === s.id)
+                      .map((c) => (
+                        <li key={c.id} className="flex justify-between gap-2">
+                          <span className="truncate">
+                            {dayMonthLabel(c.date)} · {c.note || c.description || categories?.find((k) => k.id === c.category_id)?.name || 'Shared expense'}
+                          </span>
+                          <span className="shrink-0">{formatBaht(c.amount)}</span>
+                        </li>
+                      ))}
+                  </ul>
                 </span>
                 <span className="shrink-0 font-medium">{formatBaht(s.amount)}</span>
                 <button
