@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import { CategoryPickerPanel } from '@/components/CategoryPickerPanel'
+import { SwipeDecideRow } from '@/components/SwipeDecideRow'
 import { Button } from '@/components/ui/button'
 import { Drawer, DrawerContent, DrawerDescription, DrawerFooter, DrawerHeader, DrawerTitle } from '@/components/ui/drawer'
 import { Switch } from '@/components/ui/switch'
@@ -258,6 +259,7 @@ function DayList({
   const days = [...new Set(rows.map((r) => r.date))].sort()
   return (
     <div>
+      {rows.some(actionable) && <p className="px-4 pt-2 text-xs text-muted-foreground">Swipe right to accept, left to skip. Tap a line to change its category.</p>}
       {days.map((day) => {
         const inDay = rows.filter((r) => r.date === day)
         const open = inDay.filter((r) => actionable(r) && !accepted.has(r.line))
@@ -272,18 +274,20 @@ function DayList({
               )}
             </div>
             {inDay.map((r) => (
-              <div key={r.line} className={cn('flex items-center gap-3 border-b px-4 py-2.5', accepted.has(r.line) && actionable(r) && 'bg-primary/5')}>
-                <button type="button" className="min-w-0 flex-1 text-left" disabled={!actionable(r)} onClick={() => onEdit(r.line)}>
-                  <div className="truncate text-sm">{r.description}</div>
-                  <div className="truncate text-xs text-muted-foreground">
-                    {instrumentText(r)} · {r.kind === 'transfer' ? 'Transfer' : categoryText(r.categoryId)}
-                  </div>
-                </button>
-                <Amount r={r} className="text-sm font-medium" />
-                {actionable(r) && (
-                  <Switch checked={accepted.has(r.line)} onCheckedChange={(v) => onAccept([r.line], v)} aria-label={`Accept ${r.description}`} />
-                )}
-              </div>
+              <SwipeDecideRow key={r.line} disabled={!actionable(r)} onAccept={() => onAccept([r.line], true)} onSkip={() => onAccept([r.line], false)} className="border-b">
+                <div className={cn('flex items-center gap-3 px-4 py-2.5', accepted.has(r.line) && actionable(r) && 'bg-primary/5')}>
+                  <button type="button" className="min-w-0 flex-1 text-left" disabled={!actionable(r)} onClick={() => onEdit(r.line)}>
+                    <div className="truncate text-sm">{r.description}</div>
+                    <div className="truncate text-xs text-muted-foreground">
+                      {instrumentText(r)} · {r.kind === 'transfer' ? 'Transfer' : categoryText(r.categoryId)}
+                    </div>
+                  </button>
+                  <Amount r={r} className="text-sm font-medium" />
+                  {actionable(r) && (
+                    <Switch checked={accepted.has(r.line)} onCheckedChange={(v) => onAccept([r.line], v)} aria-label={`Accept ${r.description}`} />
+                  )}
+                </div>
+              </SwipeDecideRow>
             ))}
           </section>
         )
