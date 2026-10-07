@@ -1,4 +1,4 @@
-# Wealth Prof — Architecture & Code Tour
+# Cloversky — Architecture & Code Tour
 
 > The "how do I change things myself" companion to [DESIGN.md](./DESIGN.md)
 > (which explains *why* things are designed the way they are). Read this when

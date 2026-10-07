@@ -193,7 +193,7 @@ export function ImportScreen({ onClose, mode = 'full' }: { onClose: () => void; 
 
   async function handleWorkbookDownload() {
     const blob = await buildTemplateWorkbook(context, availableEntities)
-    downloadBlob('wealth-prof-import-template.xlsx', blob)
+    downloadBlob('cloversky-import-template.xlsx', blob)
   }
 
   async function goToMapping() {

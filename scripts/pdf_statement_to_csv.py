@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 แปลง statement PDF (บัตรเครดิต/บัญชีธนาคาร) เป็น CSV รูปแบบเดียวกับ
-wealth-prof-transactions.csv โดยรันทั้งหมดในเครื่อง ไม่ส่งไฟล์หรือข้อมูล
+cloversky-transactions.csv โดยรันทั้งหมดในเครื่อง ไม่ส่งไฟล์หรือข้อมูล
 ในไฟล์ไปที่ Claude หรือ cloud ใดๆ ทั้งสิ้น
 
 ติดตั้ง (ครั้งเดียว):

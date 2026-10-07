@@ -1,4 +1,4 @@
-# Wealth Prof
+# Cloversky
 
 A shared personal-finance app for a couple — track income and expenses per person, follow installment plans and credit-card billing cycles, and plan debt payoff.
 
@@ -11,7 +11,7 @@ Documentation is in English; the product UI is in Thai.
 
 ## Status
 
-Phase 0 (Foundation) done: schema + RLS applied, CI green, auth working, deployed at https://wealth-prof.vercel.app. Phase 1 (core capture) is next — see the roadmap in DESIGN §10.
+Phase 0 (Foundation) done: schema + RLS applied, CI green, auth working, deployed at https://cloversky.vercel.app. Phase 1 (core capture) is next — see the roadmap in DESIGN §10.
 
 ## Development
 

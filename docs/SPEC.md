@@ -1,6 +1,6 @@
-# Wealth Prof — Product Spec
+# Cloversky — Product Spec
 
-This document captures the purpose and requirements of the app, distilled from the original conversation. It is the starting point for the design and implementation in this repo (`thanakrit07/wealth-prof`).
+This document captures the purpose and requirements of the app, distilled from the original conversation. It is the starting point for the design and implementation in this repo (`thanakrit07/cloversky`).
 
 ## 1. Purpose
 
@@ -105,4 +105,4 @@ Built as a React artifact for in-chat testing:
 
 ## 8. Repo
 
-`https://github.com/thanakrit07/wealth-prof`
+`https://github.com/thanakrit07/cloversky`

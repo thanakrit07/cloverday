@@ -1,4 +1,4 @@
-# Wealth Prof — notes for AI agents
+# Cloversky — notes for AI agents
 
 Read [docs/ARCHITECTURE.md](./docs/ARCHITECTURE.md) before changing code; the
 domain vocabulary is in [CONTEXT.md](./CONTEXT.md).

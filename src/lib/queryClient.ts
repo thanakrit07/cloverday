@@ -26,7 +26,7 @@ export const queryClient = new QueryClient({
 
 export const queryPersister = createSyncStoragePersister({
   storage: window.localStorage,
-  key: 'wealth-prof-query-cache',
+  key: 'cloversky-query-cache',
   throttleTime: 2_000,
 })
 

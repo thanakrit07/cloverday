@@ -1,4 +1,4 @@
-# Wealth Prof — System Analysis & Design (v3)
+# Cloversky — System Analysis & Design (v3)
 
 > Builds on [SPEC.md](./SPEC.md). Analyses the spec and proposes the architecture, data model, financial logic, UX and delivery plan for the real app in this repo.
 >

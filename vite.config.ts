@@ -14,8 +14,8 @@ export default defineConfig({
       registerType: 'prompt',
       includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
       manifest: {
-        name: 'Wealth Prof',
-        short_name: 'Wealth Prof',
+        name: 'Cloversky',
+        short_name: 'Cloversky',
         description: 'Household finance tracker for two',
         lang: 'th',
         display: 'standalone',

@@ -21,7 +21,7 @@ export function NavRail({ tab, onTabChange, onQuickAdd, onOpenSettings }: Props)
     >
       <div className="flex items-center gap-2 px-2 pb-4">
         <span aria-hidden className="size-6 shrink-0 rounded-md bg-sidebar-primary" />
-        <span className="font-heading text-sm font-semibold">Wealth Prof</span>
+        <span className="font-heading text-sm font-semibold">Cloversky</span>
       </div>
 
       {TABS.map(({ key, label, icon: Icon }) => {
