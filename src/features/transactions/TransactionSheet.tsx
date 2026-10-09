@@ -1,19 +1,16 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useQueryClient } from '@tanstack/react-query'
-import { ArrowRightLeft, Bookmark, CalendarSync, Plus, ReceiptText, Repeat, Trash2 } from 'lucide-react'
+import { ArrowRight, Bookmark, CalendarDays, CalendarSync, CreditCard, Plus, ReceiptText, Repeat, Trash2 } from 'lucide-react'
 import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
-import { AmountField } from '@/components/AmountField'
 import { CategoryIcon } from '@/lib/categoryIcons'
 import { CategoryPickerPanel } from '@/components/CategoryPickerPanel'
 import { ConfirmDialog } from '@/components/ConfirmDialog'
 import { ReceiptSheet } from './ReceiptSheet'
 import { DatePickerPanel } from '@/components/DatePickerPanel'
 import { EntryPage } from '@/components/EntryPage'
-import { EntryRow } from '@/components/EntryRow'
 import { FullScreenPage } from '@/components/FullScreenPage'
 import { InstrumentPickerPanel } from '@/components/InstrumentPickerPanel'
 import { type Instrument } from '@/components/InstrumentSelect'
@@ -56,6 +53,31 @@ function dateRowLabel(value: string): string {
   if (value === today()) return 'Today'
   const d = new Date(`${value}T00:00:00`)
   return `${d.getDate()} ${d.toLocaleDateString('en-US', { month: 'short' })} ${toBuddhistYear(d.getFullYear())}`
+}
+
+const KINDS: { key: TransactionKind; label: string }[] = [
+  { key: 'expense', label: 'Expense' },
+  { key: 'income', label: 'Income' },
+  { key: 'transfer', label: 'Transfer' },
+]
+
+// The settled strip's chips (§7.2): answers the app already has, one tap
+// each. Same selected treatment as a Preset chip and the pickers' tiles.
+function stripChip(active: boolean, placeholder: boolean): string {
+  return cn(
+    'flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm transition-colors active:scale-[0.98]',
+    active ? 'bg-primary/15 ring-1 ring-primary' : 'bg-muted',
+    placeholder && 'text-muted-foreground',
+  )
+}
+
+// A transfer's From / To get Category's weight: they are its questions.
+function instrumentBox(active: boolean, value: Instrument): string {
+  const empty = !value.accountId && !value.cardId
+  return cn(
+    'min-w-0 flex-1 truncate rounded-2xl px-4 py-3.5 text-left transition-colors',
+    active ? 'bg-primary/10 ring-1 ring-primary' : empty ? 'border-2 border-dashed text-muted-foreground' : 'bg-muted',
+  )
 }
 
 type PanelKey = 'amount' | 'category' | 'from' | 'to' | 'date'
@@ -473,7 +495,7 @@ export function TransactionSheet({ open, onOpenChange, transaction, scan }: Prop
             The split form is a screen away; this says so, and shows what is
             waiting on it. */}
         {scan && (
-          <div className="rounded-lg border bg-muted/40 p-3 text-xs">
+          <div className="rounded-xl bg-muted/60 p-3 text-xs">
             {scanLines ? (
               <>
                 <p className="font-medium text-foreground">
@@ -500,12 +522,6 @@ export function TransactionSheet({ open, onOpenChange, transaction, scan }: Prop
             )}
           </div>
         )}
-        <AmountField
-          size="lg"
-          expr={amountField.expr}
-          active={panel.active === 'amount'}
-          onActivate={() => panel.toggle('amount')}
-        />
 
         {kind !== 'transfer' && (visiblePresets.length > 0 || !transaction) && (
           <div className="-mx-4 flex gap-1.5 overflow-x-auto px-4 pb-0.5">
@@ -517,8 +533,8 @@ export function TransactionSheet({ open, onOpenChange, transaction, scan }: Prop
                   type="button"
                   onClick={() => applyPreset(p)}
                   className={cn(
-                    'flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-sm transition-colors',
-                    categoryId === p.category_id ? 'border-primary bg-primary/10' : 'border-border active:bg-accent',
+                    'flex shrink-0 items-center gap-1.5 rounded-full px-3 py-1.5 text-sm transition-colors active:scale-[0.98]',
+                    categoryId === p.category_id ? 'bg-primary/15 ring-1 ring-primary' : 'bg-muted active:bg-accent',
                   )}
                 >
                   <CategoryIcon icon={c?.icon ?? null} color={c?.color ?? null} className="size-3.5 shrink-0" />
@@ -539,97 +555,118 @@ export function TransactionSheet({ open, onOpenChange, transaction, scan }: Prop
           </div>
         )}
 
-        <Tabs value={kind} onValueChange={(v) => changeKind(v as TransactionKind)}>
-          <TabsList className="w-full">
-            <TabsTrigger value="expense" className="flex-1">
-              Expense
-            </TabsTrigger>
-            <TabsTrigger value="income" className="flex-1">
-              Income
-            </TabsTrigger>
-            <TabsTrigger value="transfer" className="flex-1">
-              Transfer
-            </TabsTrigger>
-          </TabsList>
-        </Tabs>
+        {/* 2026-10 redesign (§7.2): the form asks six things and two of them
+            are questions, so Amount and Category carry the weight and the
+            answers the app already has (kind, instrument, date) sit lighter.
+            Nothing is hidden — every one stays a single tap (D17). */}
+        <div className="flex justify-center">
+          <div role="radiogroup" aria-label="Kind" className="inline-flex rounded-full bg-muted p-0.5 text-xs">
+            {KINDS.map((k) => (
+              <button
+                key={k.key}
+                type="button"
+                role="radio"
+                aria-checked={kind === k.key}
+                onClick={() => changeKind(k.key)}
+                className={cn(
+                  'rounded-full px-3 py-1 transition-colors',
+                  kind === k.key ? 'bg-background font-medium shadow-sm' : 'text-muted-foreground',
+                )}
+              >
+                {k.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <button type="button" onClick={() => panel.toggle('amount')} aria-label="Amount" className="block w-full py-1 text-center">
+          <span
+            className={cn(
+              'inline-block max-w-full truncate border-b-2 px-2 text-5xl font-semibold tracking-[-0.03em] tabular-nums transition-colors',
+              panel.active === 'amount' ? 'border-primary' : 'border-transparent',
+              !amountField.expr ? 'text-muted-foreground/50' : kind === 'income' ? 'text-good' : 'text-foreground',
+            )}
+          >
+            {amountField.expr || '0'}
+          </span>
+        </button>
 
         {kind !== 'transfer' ? (
-          <EntryRow
-            label="Category"
-            placeholder={!selectedCategory}
-            active={panel.active === 'category'}
+          <button
+            type="button"
             onClick={() => panel.toggle('category')}
-            value={
-              selectedCategory ? (
-                <span className="flex items-center gap-1.5">
-                  <CategoryIcon icon={selectedCategory.icon} color={selectedCategory.color} className="size-4" />
-                  {categoryPath(selectedCategory, categories ?? [])}
-                </span>
-              ) : (
-                'Choose a category'
-              )
-            }
-          />
+            className={cn(
+              'flex w-full items-center gap-3 rounded-2xl px-4 py-3.5 text-left text-base transition-colors',
+              panel.active === 'category'
+                ? 'bg-primary/10 ring-1 ring-primary'
+                : selectedCategory
+                  ? 'bg-muted'
+                  : 'border-2 border-dashed',
+            )}
+          >
+            {selectedCategory ? (
+              <span className="flex min-w-0 items-center gap-2">
+                <CategoryIcon icon={selectedCategory.icon} color={selectedCategory.color} className="size-5 shrink-0" />
+                <span className="truncate">{categoryPath(selectedCategory, categories ?? [])}</span>
+              </span>
+            ) : (
+              <span className="text-muted-foreground">Choose a category</span>
+            )}
+          </button>
         ) : (
-          <div className="flex items-center justify-center gap-2 py-1.5 text-sm text-muted-foreground">
-            <ArrowRightLeft className="size-4" />
-            Between your own accounts/cards
+          <div className="flex items-center gap-2">
+            <button type="button" onClick={() => panel.toggle('from')} className={instrumentBox(panel.active === 'from', from)}>
+              {from.accountId || from.cardId ? instrumentLabel(from) : 'From'}
+            </button>
+            <ArrowRight className="size-4 shrink-0 text-muted-foreground" />
+            <button type="button" onClick={() => panel.toggle('to')} className={instrumentBox(panel.active === 'to', to)}>
+              {to.accountId || to.cardId ? instrumentLabel(to) : 'To'}
+            </button>
           </div>
         )}
 
-        <EntryRow
-          label={kind === 'transfer' ? 'From' : 'Account / card'}
-          placeholder={!from.accountId && !from.cardId}
-          active={panel.active === 'from'}
-          onClick={() => panel.toggle('from')}
-          value={from.accountId || from.cardId ? instrumentLabel(from) : 'Select account or card'}
-        />
-
-        {kind === 'transfer' && (
-          <EntryRow
-            label="To"
-            placeholder={!to.accountId && !to.cardId}
-            active={panel.active === 'to'}
-            onClick={() => panel.toggle('to')}
-            value={to.accountId || to.cardId ? instrumentLabel(to) : 'Select account or card'}
-          />
-        )}
-
-        {kind === 'expense' && (
-          <WhoBearsField amount={amountField.value} members={members} selfId={self.id} value={whoBears} onChange={setWhoBears} />
-        )}
-
-        <div className="flex items-center gap-1.5">
-          <div className="flex-1">
-            <EntryRow label="Date" active={panel.active === 'date'} onClick={() => panel.toggle('date')} value={dateRowLabel(date)} />
-          </div>
+        <div className="flex flex-wrap items-center gap-1.5">
+          {kind !== 'transfer' && (
+            <button
+              type="button"
+              onClick={() => panel.toggle('from')}
+              className={stripChip(panel.active === 'from', !from.accountId && !from.cardId)}
+            >
+              <CreditCard className="size-3.5" />
+              {from.accountId || from.cardId ? instrumentLabel(from) : 'Account / card'}
+            </button>
+          )}
+          <button type="button" onClick={() => panel.toggle('date')} className={stripChip(panel.active === 'date', false)}>
+            <CalendarDays className="size-3.5" />
+            {dateRowLabel(date)}
+          </button>
           {/* A row already saved can still become an installment (it is then replaced by the plan);
               turning it into a repeating rule is only offered while recording. */}
           {kind !== 'transfer' && (!transaction || transaction.source === 'manual' || transaction.source === 'import') && (
-            <div className="relative shrink-0">
-              <Button
+            <div className="relative">
+              <button
                 type="button"
-                variant={repInstOpen ? 'secondary' : 'outline'}
-                size="icon"
                 onClick={() => setRepInstOpen((o) => !o)}
                 aria-label="Repeat or instalment"
+                className={stripChip(repInstOpen, false)}
               >
-                <CalendarSync className="size-4" />
-              </Button>
+                <CalendarSync className="size-3.5" />
+                <span className="text-muted-foreground">Repeat</span>
+              </button>
               {repInstOpen && (
-                <div className="absolute right-0 bottom-full z-10 mb-1.5 w-40 space-y-1 rounded-lg border bg-popover p-1.5 shadow-md">
+                <div className="absolute left-0 bottom-full z-10 mb-1.5 w-40 space-y-1 rounded-lg border bg-popover p-1.5 shadow-md">
                   {!transaction && (
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setRepInstOpen(false)
-                      setCreating('recurring')
-                    }}
-                    className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors active:bg-accent"
-                  >
-                    <Repeat className="size-4 text-muted-foreground" />
-                    Repeat
-                  </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setRepInstOpen(false)
+                        setCreating('recurring')
+                      }}
+                      className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors active:bg-accent"
+                    >
+                      <Repeat className="size-4 text-muted-foreground" />
+                      Repeat
+                    </button>
                   )}
                   <button
                     type="button"
@@ -648,11 +685,15 @@ export function TransactionSheet({ open, onOpenChange, transaction, scan }: Prop
           )}
         </div>
 
+        {kind === 'expense' && (
+          <WhoBearsField amount={amountField.value} members={members} selfId={self.id} value={whoBears} onChange={setWhoBears} />
+        )}
+
         {/* Read-only on purpose: this row states which period of which plan
             the charge is, and both halves belong to the plan. It sits above
             Note so the field below is unambiguously the user's own. */}
         {periodLabel && (
-          <div className="rounded-lg border bg-muted/40 p-3">
+          <div className="rounded-xl bg-muted/60 p-3">
             <div className="flex items-center gap-2 text-sm font-medium">
               <CalendarSync className="size-4 shrink-0 text-muted-foreground" />
               <span>{periodLabel}</span>
@@ -663,12 +704,17 @@ export function TransactionSheet({ open, onOpenChange, transaction, scan }: Prop
           </div>
         )}
 
-        <div className="space-y-1.5">
-          <Label htmlFor="txn-note">Note</Label>
-          {/* Tapping in needs the system keyboard, not the shared panel —
-              without closing it, both fight for the same screen space. */}
-          <Input id="txn-note" value={note} onChange={(e) => setNote(e.target.value)} onFocus={panel.close} />
-        </div>
+        {/* Tapping in needs the system keyboard, not the shared panel —
+            without closing it, both fight for the same screen space. */}
+        <input
+          id="txn-note"
+          aria-label="Note"
+          placeholder="Note"
+          value={note}
+          onChange={(e) => setNote(e.target.value)}
+          onFocus={panel.close}
+          className="w-full border-b bg-transparent py-2 text-base outline-none transition-colors placeholder:text-muted-foreground focus:border-primary"
+        />
 
         {!detailsOpen ? (
           <button
@@ -694,7 +740,7 @@ export function TransactionSheet({ open, onOpenChange, transaction, scan }: Prop
             <button
               type="button"
               onClick={() => setSplitting(true)}
-              className="flex w-full items-center gap-2.5 rounded-md border px-3 py-2 text-left transition-colors active:bg-accent/60"
+              className="flex w-full items-center gap-2.5 rounded-xl bg-muted/60 px-3 py-2.5 text-left transition-colors active:bg-accent/60"
             >
               <ReceiptText className="size-4 shrink-0 text-muted-foreground" />
               <span className="min-w-0 flex-1">

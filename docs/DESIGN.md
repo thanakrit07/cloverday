@@ -899,6 +899,8 @@ The v2 quick-add (amount-first with the system numpad auto-opening over a scroll
 
 **Nothing is hidden.** D17 removed the Edit toggle precisely because recording on the partner's behalf cost three taps to reach, and collapsing rows behind a disclosure would rebuild that. Every row stays visible and one tap away; only the visual weight changes.
 
+*(2026-10 redesign)* **The weighting above is finally built.** The amount is a bare 5xl figure (no box) under a small Expense / Income / Transfer segment, and Category is the one large row (dashed while empty); a transfer's From / To take that weight instead. Account / card, Date and Rep/Inst compress into one strip of chips — the "lighter settled strip" — with Who bears under it and Note as an unboxed line. The picker panels match: filled tiles without outlines, the same selected ring as the chips, and account tiles carry the same type icon as Balances. Chosen from four layouts on the `prototype/entry-layouts` branch.
+
 Transfers swap the category panel for a from/to instrument picker, as before. Card-bill payment stays a preset on the card statement view (§7.3) with the amount pre-filled from `cycleBill`.
 
 ### 7.3 Other screens (only where they differ from the baseline)

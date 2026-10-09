@@ -71,7 +71,7 @@ export function CategoryPickerPanel({ categories, kind, selectedId, onSelect }: 
 
   return (
     <div className="max-h-full overflow-y-auto">
-      <div className="grid grid-cols-4 gap-1.5">
+      <div className="grid grid-cols-4 gap-2">
         {tiles.map((tile, i) => {
           const c = tile.kind === 'main' ? tile.category : null
           const hasSubs = c ? subsOf(c.id).length > 0 : false
@@ -89,22 +89,24 @@ export function CategoryPickerPanel({ categories, kind, selectedId, onSelect }: 
                     onSelect(c, hasSubs)
                     setExpandedMainId(hasSubs && !isExpandedMain ? c.id : null)
                   }}
+                  // Filled tiles, no outline (2026-10 redesign) — the same
+                  // selected ring as the entry form's chips.
                   className={cn(
-                    'relative flex flex-col items-center gap-0.5 rounded-lg border px-1 py-1.5 text-[11px] leading-tight',
+                    'relative flex min-h-16 flex-col items-center justify-center gap-1.5 rounded-xl px-1 py-2 text-xs leading-tight transition-colors active:scale-[0.97]',
                     selectedId === c.id
-                      ? 'border-primary bg-primary/10'
+                      ? 'bg-primary/15 ring-1 ring-inset ring-primary'
                       : isExpandedMain
-                        ? 'border-primary/40'
-                        : 'border-border',
-                    isExpandedMain && showTrayAfter && 'rounded-b-none border-b-transparent',
+                        ? 'bg-primary/10'
+                        : 'bg-muted',
+                    isExpandedMain && showTrayAfter && 'rounded-b-none',
                   )}
                 >
-                  <CategoryIcon icon={c.icon} color={c.color} className="size-4.5" />
+                  <CategoryIcon icon={c.icon} color={c.color} className="size-6" />
                   <span className="w-full truncate text-center">{c.name}</span>
                   {hasSubs && (
                     <ChevronDown
                       className={cn(
-                        'absolute top-0.5 right-0.5 size-3 text-muted-foreground transition-transform',
+                        'absolute top-1 right-1 size-3.5 text-muted-foreground transition-transform',
                         isExpandedMain && 'rotate-180',
                       )}
                     />
@@ -114,30 +116,33 @@ export function CategoryPickerPanel({ categories, kind, selectedId, onSelect }: 
                 <button
                   type="button"
                   onClick={() => setGridExpanded(true)}
-                  className="flex flex-col items-center gap-0.5 rounded-lg border border-dashed border-border px-1 py-1.5 text-[11px] leading-tight text-muted-foreground"
+                  className="flex min-h-16 flex-col items-center justify-center gap-1.5 rounded-xl border border-dashed border-border px-1 py-2 text-xs leading-tight text-muted-foreground transition-colors active:scale-[0.97]"
                 >
-                  <MoreHorizontal className="size-4.5" />
+                  <MoreHorizontal className="size-6" />
                   <span>More</span>
                 </button>
               )}
 
               {showTrayAfter && (
-                // -mt-1.5 cancels the grid gap so the tray butts against the
-                // row above; the matching accent border keeps it reading as
-                // attached to the tapped main rather than a new row of peers
-                // (D10 — sub categories shown close to their parent).
-                <div className="col-span-4 -mt-1.5 grid grid-cols-4 gap-1.5 rounded-lg rounded-t-none border border-t-0 border-primary/40 bg-muted/50 p-1.5">
+                // -mt-2 cancels the grid gap so the tray butts against the
+                // row above; sharing the tapped main's tint keeps it reading
+                // as attached to it rather than a new row of peers (D10 —
+                // sub categories shown close to their parent). Subs are
+                // wrapping chips sized to their name rather than a 4-up grid:
+                // a fixed quarter-width cell truncated longer names, and at
+                // 11px they were the smallest targets on the form.
+                <div className="col-span-4 -mt-2 flex flex-wrap gap-2 rounded-xl bg-primary/10 p-2">
                   {expandedSubs.map((sub) => (
                     <button
                       key={sub.id}
                       type="button"
                       onClick={() => onSelect(sub, false)}
                       className={cn(
-                        'flex items-center justify-center rounded-lg border bg-background px-1 py-2 text-center text-[11px] leading-tight',
-                        selectedId === sub.id ? 'border-primary bg-primary/10' : 'border-border',
+                        'min-h-11 max-w-full rounded-full px-4 text-sm transition-colors active:scale-[0.97]',
+                        selectedId === sub.id ? 'bg-background font-medium ring-1 ring-inset ring-primary' : 'bg-background/70',
                       )}
                     >
-                      <span className="w-full truncate">{sub.name}</span>
+                      <span className="block truncate">{sub.name}</span>
                     </button>
                   ))}
                 </div>
