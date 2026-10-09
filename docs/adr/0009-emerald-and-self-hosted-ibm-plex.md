@@ -1,5 +1,8 @@
 # The palette is Emerald and the type is self-hosted IBM Plex
 
+> **The palette is superseded by [ADR-0022](./0022-tomato-and-marine-on-white.md)** (2026-10).
+> The fonts, the focus ring and the verify-every-pair rule still stand.
+
 The app's colour becomes **Emerald** — a green canvas, light and dark, with every
 foreground/background pair verified at 4.5:1 or better — and its type becomes one
 family in three cuts, bundled with the app rather than fetched: **IBM Plex Sans**

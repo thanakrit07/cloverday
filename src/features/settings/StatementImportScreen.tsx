@@ -475,7 +475,7 @@ export function StatementImportScreen({ onClose }: { onClose: () => void }) {
                       </button>
                     )}
                   </td>
-                  <td className={cn('whitespace-nowrap p-2 text-right tabular-nums', r.kind === 'income' && 'text-emerald-600')}>
+                  <td className={cn('whitespace-nowrap p-2 text-right tabular-nums', r.kind === 'income' && 'text-good')}>
                     {formatBaht(r.amount)}
                   </td>
                   <td className="p-2">
