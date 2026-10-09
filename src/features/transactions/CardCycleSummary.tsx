@@ -83,13 +83,19 @@ export function CardCycleSummary({ card, cycle, cycleTransactions }: Props) {
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="flex w-full items-center gap-2 rounded-2xl border bg-linear-to-br from-secondary/50 via-card to-accent/40 px-4 py-2.5 text-left text-sm shadow-sm"
+        aria-expanded={open}
+        className="block w-full px-1 pb-1 pt-2 text-left"
       >
-        <span className="flex-1 truncate">
-          {formatBaht(bill)} · Due {dayMonthLabel(cycle.dueDate)}
-          {paidSoFar > 0 && ` · ${formatBaht(paidSoFar)} paid`}
+        <span className="flex items-center gap-1 text-[13px] text-muted-foreground">
+          Bill · due {dayMonthLabel(cycle.dueDate)}
+          <ChevronDown className={cn('size-3.5 transition-transform', open && 'rotate-180')} />
         </span>
-        <ChevronDown className={cn('size-4 shrink-0 text-muted-foreground transition-transform', open && 'rotate-180')} />
+        <span className="mt-1 block text-[42px] font-semibold leading-none tracking-[-0.035em] tabular-nums">{formatBaht(bill)}</span>
+        {paidSoFar > 0 && (
+          <span className="mt-2.5 block text-[13px] tabular-nums text-muted-foreground">
+            <span className="font-medium text-good">{formatBaht(paidSoFar)}</span> paid
+          </span>
+        )}
       </button>
 
       {open && (

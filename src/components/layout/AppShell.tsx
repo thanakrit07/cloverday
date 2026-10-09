@@ -217,7 +217,7 @@ export function AppShell({
 
   return (
     <div className="flex min-h-svh flex-col bg-background">
-      <header className="sticky top-0 z-10 space-y-2 border-b bg-linear-to-r from-secondary/70 via-background/95 to-accent/60 px-4 pb-3 pt-[calc(env(safe-area-inset-top)+0.75rem)] backdrop-blur">
+      <header className="sticky top-0 z-10 space-y-2 border-b bg-background/90 px-4 pb-3 pt-[calc(env(safe-area-inset-top)+0.75rem)] backdrop-blur">
         {!online && (
           <div className="flex items-center justify-center gap-1.5 rounded-full bg-muted px-3 py-1 text-xs text-muted-foreground">
             <CloudOff className="size-3.5" />
@@ -254,7 +254,7 @@ export function AppShell({
                 <Button variant="ghost" size="icon" onClick={cardCycle.onPrev} aria-label="Previous cycle">
                   <ChevronLeft className="size-4" />
                 </Button>
-                <span className="rounded-lg px-2 py-1 font-heading text-sm font-medium">{cardCycle.label}</span>
+                <span className="rounded-lg px-2 py-1 font-heading text-base font-semibold tracking-[-0.01em]">{cardCycle.label}</span>
                 <Button variant="ghost" size="icon" onClick={cardCycle.onNext} aria-label="Next cycle">
                   <ChevronRight className="size-4" />
                 </Button>
@@ -264,7 +264,7 @@ export function AppShell({
                 <Button variant="ghost" size="icon" onClick={yearNav.onPrev} aria-label="Previous year">
                   <ChevronLeft className="size-4" />
                 </Button>
-                <span className="rounded-lg px-2 py-1 font-heading text-sm font-medium">{yearNav.label}</span>
+                <span className="rounded-lg px-2 py-1 font-heading text-base font-semibold tracking-[-0.01em]">{yearNav.label}</span>
                 <Button variant="ghost" size="icon" onClick={yearNav.onNext} aria-label="Next year">
                   <ChevronRight className="size-4" />
                 </Button>
@@ -277,7 +277,7 @@ export function AppShell({
                 <button
                   type="button"
                   onClick={() => setPickerOpen(true)}
-                  className="rounded-lg px-2 py-1 font-heading text-sm font-medium transition-colors active:bg-accent"
+                  className="rounded-lg px-2 py-1 font-heading text-base font-semibold tracking-[-0.01em] transition-colors active:bg-accent"
                 >
                   {monthLabel(month)}
                 </button>
@@ -286,7 +286,7 @@ export function AppShell({
                 </Button>
               </div>
             ) : (
-              <h1 className="font-heading text-sm font-medium">{tabLabel}</h1>
+              <h1 className="font-heading text-base font-semibold tracking-[-0.01em]">{tabLabel}</h1>
             )}
 
             <div className="flex items-center">

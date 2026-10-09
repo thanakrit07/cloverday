@@ -839,6 +839,12 @@ to remember instead of one per screen.
   collapsed row. Both remember whether they were left open. Three lines of summary
   pushed the first transaction too far down the screen to check at a glance, which
   is the one thing the daily habit needs.
+  *(2026-10 redesign)* The single line became a headline: "Spent in <month>" as
+  one large figure with In / Net as a muted line under it — still the toggle for
+  the per-person split. The ledger below is a timeline (date in a left column,
+  the day's rows hanging off it, day totals under them) instead of a bordered
+  box, and expenses read in the foreground colour: red is kept for warnings and
+  a negative Net, not every expense.
 * **Settings leaves the tab bar** for a ⚙ in the top right of every tab — it is
   opened about monthly, and a tab is expensive real estate. Search is a permanent
   icon in the top left of Records, the only tab with anything to search.

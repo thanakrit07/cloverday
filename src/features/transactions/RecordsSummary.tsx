@@ -273,20 +273,31 @@ export function RecordsSummary({ month, person, card, cardCycle, filter }: Props
 
   return (
     <div className="space-y-3">
+      {/* The month's one number, big (2026-10 redesign): what was spent is
+          the figure the daily check is for, so it leads and In/Net follow
+          as supporting text. Still the toggle for the per-person split. */}
       <button
         type="button"
         onClick={() => setSummaryOpen((open) => !open)}
-        className="flex w-full items-center gap-2 rounded-2xl border bg-linear-to-br from-secondary/50 via-card to-accent/40 px-4 py-2.5 text-left text-sm shadow-sm"
+        aria-expanded={summaryOpen}
+        className="block w-full px-1 pb-1 pt-2 text-left"
       >
-        <span className="flex-1 truncate">
-          In <span className="text-good">{formatBaht(income)}</span> · Out{' '}
-          <span className="text-destructive">{formatBaht(expense)}</span>
+        <span className="flex items-center gap-1 text-[13px] text-muted-foreground">
+          Spent in {monthLabel(month)}
+          <ChevronDown className={cn('size-3.5 transition-transform', summaryOpen && 'rotate-180')} />
         </span>
-        <span className={cn('font-semibold', income - expense >= 0 ? 'text-good' : 'text-destructive')}>
-          {income - expense >= 0 ? '+' : ''}
-          {formatBaht(income - expense)}
+        <span className="mt-1 block text-[42px] font-semibold leading-none tracking-[-0.035em] tabular-nums">
+          {formatBaht(expense)}
         </span>
-        <ChevronDown className={cn('size-4 shrink-0 text-muted-foreground transition-transform', summaryOpen && 'rotate-180')} />
+        <span className="mt-2.5 block text-[13px] tabular-nums text-muted-foreground">
+          In <span className="font-medium text-good">{formatBaht(income)}</span>
+          <span className="mx-2 text-border">/</span>
+          Net{' '}
+          <span className={cn('font-medium', income - expense >= 0 ? 'text-good' : 'text-destructive')}>
+            {income - expense >= 0 ? '+' : '−'}
+            {formatBaht(Math.abs(income - expense))}
+          </span>
+        </span>
       </button>
 
       {summaryOpen && personRows.length > 0 && (
@@ -326,13 +337,13 @@ export function RecordsSummary({ month, person, card, cardCycle, filter }: Props
                   matching dots, so it opens and closes with that list. */}
               <CategoryDonut rows={categoryRows} total={categoryTotal} />
 
-              <ul className="space-y-1.5">
+              <ul className="overflow-hidden rounded-2xl border bg-card">
                 {categoryRows.map(({ main, total, subs }, i) => {
                   const isExpanded = expandedMainId === main.id
                   const dotColor = categoryColor({ main, total, subs }, i)
                   return (
-                    <li key={main.id} className="space-y-1">
-                      <div className="space-y-1.5 rounded-xl border bg-card px-3 py-2">
+                    <li key={main.id} className="border-t first:border-t-0">
+                      <div className="space-y-1.5 px-3 py-2">
                         <div className="flex items-center gap-2 text-sm">
                           <span className="flex min-w-0 flex-1 items-center gap-2">
                             <span className="size-2.5 shrink-0 rounded-full" style={{ backgroundColor: dotColor }} />

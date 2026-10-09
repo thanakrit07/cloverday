@@ -345,7 +345,7 @@ export function TransactionsScreen({
                                   t.kind === 'income'
                                     ? 'text-good'
                                     : t.kind === 'expense'
-                                      ? 'text-destructive'
+                                      ? 'text-foreground'
                                       : 'text-muted-foreground',
                                 )}
                               >
@@ -451,7 +451,7 @@ export function TransactionsScreen({
                 </span>
               </span>
               <span className="shrink-0 text-right">
-                <span className={cn('block text-sm tabular-nums', kind === 'income' ? 'text-good' : 'text-destructive')}>
+                <span className={cn('block text-sm tabular-nums', kind === 'income' ? 'text-good' : 'text-foreground')}>
                   {kind === 'income' ? '+' : '-'}
                   {formatBaht(total)}
                 </span>
@@ -560,40 +560,36 @@ export function TransactionsScreen({
       {isCalendar ? (
         <CalendarGrid month={month} totals={dailyTotals} onSelectDay={setCalendarDrawerDate} />
       ) : (
-        /* One continuous ledger rather than a card per row (Money Manager
-           density): day headers carry that day's totals, and hairline
-           dividers replace the per-row borders and gaps. */
-        <div className="overflow-hidden rounded-xl border bg-card">
-          {groups.map(([date, items], groupIndex) => {
+        /* Timeline (2026-10 redesign): the date is a left column and the
+           day's rows hang off it, so the ledger reads as one continuous
+           list on the page rather than a box. The day's totals sit under
+           its rows, in muted text — red is kept for things that need
+           attention, not for every expense. */
+        <div>
+          {groups.map(([date, items]) => {
             const dayIncome = items.filter((t) => t.kind === 'income').reduce((s, t) => s + borneOf(t), 0)
             const dayExpense = items.filter((t) => t.kind === 'expense').reduce((s, t) => s + borneOf(t), 0)
             return (
-              <div key={date} className={groupIndex > 0 ? 'border-t' : undefined}>
-                <div className="flex items-center gap-2 bg-muted/50 px-3 py-1">
-                  {isSearching ? (
-                    <span className="text-sm font-semibold tabular-nums">{fullDateLabel(date)}</span>
-                  ) : (
-                    <>
-                      <span className="text-sm font-semibold tabular-nums">{dayOfMonthLabel(date)}</span>
-                      <span className="rounded bg-background px-1.5 py-px text-[10px] text-muted-foreground">
-                        {weekdayLabel(date)}
-                      </span>
-                    </>
-                  )}
-                  <span className="ml-auto flex items-center gap-3 text-[11px] tabular-nums">
-                    {dayIncome > 0 && (
-                      <span className="text-good">{formatBaht(dayIncome)}</span>
+              <section key={date} className="grid grid-cols-[3rem_1fr] border-t first:border-t-0">
+                <header className="pr-2 pt-2.5 text-center">
+                  <p className="text-xl font-semibold leading-none tracking-[-0.02em] tabular-nums">{dayOfMonthLabel(date)}</p>
+                  {/* Search spans months, so the month+year replaces the weekday there. */}
+                  <p className="mt-1 text-[11px] text-muted-foreground">
+                    {isSearching ? fullDateLabel(date).split(' ').slice(1).join(' ') : weekdayLabel(date)}
+                  </p>
+                </header>
+                <div className="min-w-0 border-l py-1">
+                  <ul className="[&>li:first-child]:border-t-0 [&>li]:border-border/60">
+                    {groupByReceipt(items).map((entry) =>
+                      entry.type === 'transaction' ? renderRow(entry.transaction) : renderReceipt(entry),
                     )}
-                    {dayExpense > 0 && <span className="text-destructive">{formatBaht(dayExpense)}</span>}
-                  </span>
+                  </ul>
+                  <div className="flex justify-end gap-2.5 px-3 pb-1.5 pt-0.5 text-xs tabular-nums">
+                    {dayIncome > 0 && <span className="text-good">+{formatBaht(dayIncome)}</span>}
+                    {dayExpense > 0 && <span className="text-muted-foreground">−{formatBaht(dayExpense)}</span>}
+                  </div>
                 </div>
-
-                <ul>
-                  {groupByReceipt(items).map((entry) =>
-                    entry.type === 'transaction' ? renderRow(entry.transaction) : renderReceipt(entry),
-                  )}
-                </ul>
-              </div>
+              </section>
             )
           })}
         </div>

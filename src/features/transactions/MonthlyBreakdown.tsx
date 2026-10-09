@@ -3,7 +3,7 @@ import { useCategories } from '@/lib/categories'
 import { useHousehold } from '@/lib/HouseholdContext'
 import { borneAmount, matchesPersonFilter, sharesByTransaction, type PersonFilter } from '@/lib/filters'
 import { formatBaht } from '@/lib/format'
-import { monthDayRangeLabel, monthShortLabel, monthsOfYear, yearRange } from '@/lib/month'
+import { monthDayRangeLabel, monthShortLabel, monthsOfYear, yearLabel, yearRange } from '@/lib/month'
 import { matchesRecordsFilter, type RecordsFilterState } from '@/lib/recordsFilter'
 import { useTransactionShares } from '@/lib/transactionShares'
 import { useTransactions } from '@/lib/transactions'
@@ -54,15 +54,18 @@ export function MonthlyBreakdown({ year, person, filter, onSelectMonth }: Props)
 
   return (
     <div className="space-y-3">
-      <div className="flex items-center gap-2 rounded-2xl border bg-linear-to-br from-secondary/50 via-card to-accent/40 px-4 py-2.5 text-sm shadow-sm">
-        <span className="flex-1 truncate">
-          In <span className="text-good">{formatBaht(yearIncome)}</span> · Out{' '}
-          <span className="text-destructive">{formatBaht(yearExpense)}</span>
-        </span>
-        <span className={cn('font-semibold', yearIncome - yearExpense >= 0 ? 'text-good' : 'text-destructive')}>
-          {yearIncome - yearExpense >= 0 ? '+' : ''}
-          {formatBaht(yearIncome - yearExpense)}
-        </span>
+      <div className="px-1 pt-2">
+        <p className="text-[13px] text-muted-foreground">Spent in {yearLabel(year)}</p>
+        <p className="mt-1 text-[42px] font-semibold leading-none tracking-[-0.035em] tabular-nums">{formatBaht(yearExpense)}</p>
+        <p className="mt-2.5 text-[13px] tabular-nums text-muted-foreground">
+          In <span className="font-medium text-good">{formatBaht(yearIncome)}</span>
+          <span className="mx-2 text-border">/</span>
+          Net{' '}
+          <span className={cn('font-medium', yearIncome - yearExpense >= 0 ? 'text-good' : 'text-destructive')}>
+            {yearIncome - yearExpense >= 0 ? '+' : '−'}
+            {formatBaht(Math.abs(yearIncome - yearExpense))}
+          </span>
+        </p>
       </div>
 
       <div className="overflow-hidden rounded-xl border bg-card">
