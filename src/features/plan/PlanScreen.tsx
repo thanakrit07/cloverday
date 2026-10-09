@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Plus, Repeat } from 'lucide-react'
+import { CalendarSync, CreditCard, Plus, Repeat } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Switch } from '@/components/ui/switch'
 import { InstallmentsScreen } from '@/features/installments/InstallmentsScreen'
@@ -13,6 +13,7 @@ import { useInstallmentPayments, useInstallments, usePostedPeriods } from '@/lib
 import { ALL_TIME, dayMonthLabel } from '@/lib/month'
 import { useRecurringRules, useUpdateRecurringRule, type RecurringRule } from '@/lib/recurring'
 import { useTransactions } from '@/lib/transactions'
+import { cn } from '@/lib/utils'
 import { CardForecastTab } from './CardForecastTab'
 import { RecurringRuleSheet } from './RecurringRuleSheet'
 
@@ -72,7 +73,7 @@ interface TimelineRow {
 // subscription's cost was silently counted twice: once inside its card's
 // own bill, once again inside Recurring's "Fixed costs" — Fixed costs now
 // excludes anything billed to a card, since that's covered here instead.
-function ComingUpSection({ onEditRecurring }: { onEditRecurring: (rule: RecurringRule) => void }) {
+function useComingUpRows(): TimelineRow[] {
   const { householdId } = useHousehold()
   const { data: cards } = useCards(householdId)
   const { data: installments } = useInstallments(householdId)
@@ -166,44 +167,74 @@ function ComingUpSection({ onEditRecurring }: { onEditRecurring: (rule: Recurrin
 
     return list.sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0))
   }, [cards, installments, paidCountByInstallment, postedPeriods, adjustments, rules, transactions, today, horizon])
+  return rows
+}
 
+const ROW_ICON = { card: CreditCard, recurring: Repeat, installment: CalendarSync } as const
+
+// 2026-10 redesign: a dated timeline, the way Records hangs a day's rows off
+// its date — the day in a left column, that day's rows beside it, each with
+// Balances' icon square (amber for a card bill).
+function ComingUpSection({ rows, onEditRecurring }: { rows: TimelineRow[]; onEditRecurring: (rule: RecurringRule) => void }) {
   if (rows.length === 0) {
     return <p className="text-sm text-muted-foreground">Nothing due soon.</p>
   }
 
+  const byDate = new Map<string, TimelineRow[]>()
+  for (const row of rows) byDate.set(row.date, [...(byDate.get(row.date) ?? []), row])
+
   return (
-    <ul className="divide-y overflow-hidden rounded-xl border bg-card">
-      {rows.map((row) => {
-        const amount = (
-          <span className="shrink-0">
-            {row.posted > 0 && formatBaht(row.posted)}
-            {row.posted > 0 && row.projected > 0 && <span className="text-muted-foreground"> + </span>}
-            {row.projected > 0 && <span className={row.posted > 0 ? 'text-muted-foreground' : undefined}>{formatBaht(row.projected)}</span>}
-          </span>
-        )
+    <ol className="space-y-3">
+      {[...byDate.entries()].map(([date, dayRows]) => {
+        const d = new Date(`${date}T00:00:00`)
         return (
-          <li key={row.key} className="flex items-center gap-3 px-3 py-2.5 text-sm">
-            {row.rule ? (
-              <button onClick={() => onEditRecurring(row.rule!)} className="flex min-w-0 flex-1 items-center gap-3 text-left">
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate">{row.label}</span>
-                  <span className="block truncate text-xs text-muted-foreground">{row.sublabel}</span>
-                </span>
-                {amount}
-              </button>
-            ) : (
-              <>
-                <span className="min-w-0 flex-1">
-                  <span className="block truncate">{row.label}</span>
-                  <span className="block truncate text-xs text-muted-foreground">{row.sublabel}</span>
-                </span>
-                {amount}
-              </>
-            )}
+          <li key={date} className="grid grid-cols-[3rem_1fr] gap-2">
+            <div className="pt-1 text-center leading-none">
+              <span className="block text-xl font-semibold tabular-nums">{d.getDate()}</span>
+              <span className="block text-[11px] text-muted-foreground">{d.toLocaleDateString('en-US', { month: 'short' })}</span>
+            </div>
+            <ul className="space-y-1 border-l pl-3">
+              {dayRows.map((row) => {
+                const kind = row.key.startsWith('card:') ? 'card' : row.rule ? 'recurring' : 'installment'
+                const Icon = ROW_ICON[kind]
+                const body = (
+                  <>
+                    <span
+                      className={cn(
+                        'grid size-8 shrink-0 place-items-center rounded-lg',
+                        kind === 'card' ? 'bg-warning text-warning-foreground' : 'bg-secondary text-secondary-foreground',
+                      )}
+                    >
+                      <Icon className="size-4" />
+                    </span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block truncate text-sm">{row.label}</span>
+                      <span className="block truncate text-xs text-muted-foreground">{row.sublabel}</span>
+                    </span>
+                    <span className="shrink-0 text-sm tabular-nums">
+                      {row.posted > 0 && formatBaht(row.posted)}
+                      {row.posted > 0 && row.projected > 0 && <span className="text-muted-foreground"> + </span>}
+                      {row.projected > 0 && <span className={row.posted > 0 ? 'text-muted-foreground' : undefined}>{formatBaht(row.projected)}</span>}
+                    </span>
+                  </>
+                )
+                return (
+                  <li key={row.key}>
+                    {row.rule ? (
+                      <button onClick={() => onEditRecurring(row.rule!)} className="flex w-full items-center gap-3 py-1 text-left">
+                        {body}
+                      </button>
+                    ) : (
+                      <div className="flex items-center gap-3 py-1">{body}</div>
+                    )}
+                  </li>
+                )
+              })}
+            </ul>
           </li>
         )
       })}
-    </ul>
+    </ol>
   )
 }
 
@@ -223,19 +254,19 @@ function RecurringTab() {
 
   return (
     <div className="space-y-4">
-      <div className="rounded-2xl border bg-linear-to-br from-secondary/50 via-card to-accent/40 p-4 shadow-sm">
+      <div className="px-1">
         <h2 className="font-heading text-sm font-medium text-muted-foreground">Recurring per month (approx.)</h2>
-        <dl className="mt-2 grid grid-cols-2 gap-2 text-center">
-          <div>
-            <dt className="text-xs text-muted-foreground">Income</dt>
-            <dd className="text-good">{formatBaht(monthlyIncome)}</dd>
-          </div>
+        <dl className="mt-2 grid grid-cols-2 gap-4">
           <div>
             <dt className="text-xs text-muted-foreground">Fixed costs</dt>
-            <dd>{formatBaht(monthlyExpense)}</dd>
+            <dd className="text-2xl font-semibold tracking-[-0.02em] tabular-nums">{formatBaht(monthlyExpense)}</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-muted-foreground">Income</dt>
+            <dd className="text-2xl font-semibold tracking-[-0.02em] tabular-nums text-good">{formatBaht(monthlyIncome)}</dd>
           </div>
         </dl>
-        <p className="mt-1 text-[11px] text-muted-foreground">Card-billed subscriptions count in Card bills below, not here.</p>
+        <p className="mt-1.5 text-xs text-muted-foreground">Card-billed subscriptions count in Card bills above, not here.</p>
       </div>
 
       <section className="space-y-2">
@@ -247,11 +278,11 @@ function RecurringTab() {
           </Button>
         </div>
 
-        <ul className="space-y-1.5">
+        <ul className="overflow-hidden rounded-2xl border bg-card">
           {(rules ?? []).map((rule) => {
             const next = rule.active ? nextOccurrence(rule, todayIso()) : null
             return (
-              <li key={rule.id} className="flex items-center gap-2 rounded-xl border bg-card px-3 py-2">
+              <li key={rule.id} className="flex items-center gap-2 border-t px-3 py-2 first:border-t-0">
                 <Repeat className="size-4 shrink-0 text-muted-foreground" />
                 <button onClick={() => setEditing(rule)} className="min-w-0 flex-1 text-left">
                   <span className={rule.active ? 'block truncate text-sm' : 'block truncate text-sm text-muted-foreground line-through'}>
@@ -275,7 +306,7 @@ function RecurringTab() {
             )
           })}
           {rules?.length === 0 && (
-            <p className="text-sm text-muted-foreground">
+            <p className="px-3 py-2 text-sm text-muted-foreground">
               No recurring rules yet. Add salary, insurance, subscriptions — they'll be recorded automatically on schedule.
             </p>
           )}
@@ -295,23 +326,44 @@ function RecurringTab() {
 
 // D-0004: no sub-tabs — everything sits on one scrollable screen, so a plan
 // is one tap from the FAB instead of two. v3.9 reorganises it by purpose:
-// Coming up (what's due, merged across every plan type) leads, and the
-// per-type management lists — Card bills, Recurring rules, Installments —
-// sit below for editing what generates those rows.
+// the forward view leads, and the per-type management lists — Recurring
+// rules, Installments — sit below for editing what generates those rows.
+// 2026-10: the forward view is the headline, the card-bill chart (a spike
+// seen before it's read), then Coming up as a dated timeline.
 export function PlanScreen() {
   const [editingRule, setEditingRule] = useState<RecurringRule | null>(null)
+  const rows = useComingUpRows()
+  const posted = rows.reduce((sum, r) => sum + r.posted, 0)
+  const projected = rows.reduce((sum, r) => sum + r.projected, 0)
 
   return (
     <div className="mx-auto max-w-2xl space-y-6 p-4">
+      {/* 2026-10 redesign: the same headline as Records and Balances — the
+          tab's one number, big — here everything due inside Coming up's
+          horizon, with the Posted / Projected split under it (§7.3: both at
+          once, never behind a toggle). */}
+      <div className="px-1 pt-2">
+        <span className="text-[13px] text-muted-foreground">Due in the next {HORIZON_DAYS} days</span>
+        <span className="mt-1 block text-[42px] font-semibold leading-none tracking-[-0.035em] tabular-nums">
+          {formatBaht(posted + projected)}
+        </span>
+        <span className="mt-2.5 block text-[13px] tabular-nums text-muted-foreground">
+          <span className="font-medium text-foreground">{formatBaht(posted)}</span> posted
+          <span className="mx-2 text-border">/</span>
+          {formatBaht(projected)} projected
+        </span>
+      </div>
+
       <section className="space-y-2">
-        <h2 className="font-heading text-sm font-medium text-muted-foreground">Coming up</h2>
-        <ComingUpSection onEditRecurring={setEditingRule} />
+        <h2 className="px-1 text-sm font-medium">Card bills by month</h2>
+        <CardForecastTab />
       </section>
 
       <section className="space-y-2">
-        <h2 className="font-heading text-sm font-medium text-muted-foreground">Card bills</h2>
-        <CardForecastTab />
+        <h2 className="px-1 text-sm font-medium">Coming up</h2>
+        <ComingUpSection rows={rows} onEditRecurring={setEditingRule} />
       </section>
+
       <section>
         <RecurringTab />
       </section>

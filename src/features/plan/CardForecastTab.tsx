@@ -1,5 +1,4 @@
-import { useMemo, useState } from 'react'
-import { ChevronDown } from 'lucide-react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useCardCycleAdjustments } from '@/lib/cardCycleAdjustments'
 import { useCards } from '@/lib/cards'
@@ -40,16 +39,13 @@ function rollingMonths(): string[] {
 // and Projected (recurring charges — cancellable tomorrow, rarely the same
 // amount twice). Both show at once rather than behind a toggle, because the
 // gap between them is the most useful thing on the screen.
-export function CardForecastTab() {
+function useCardForecast(view: ViewWindow) {
   const { householdId } = useHousehold()
   const { data: cards } = useCards(householdId)
   const { data: installments } = useInstallments(householdId)
   const { data: postedPeriods } = usePostedPeriods(householdId)
   const { data: adjustments } = useCardCycleAdjustments(householdId)
   const { data: rules } = useRecurringRules(householdId)
-
-  const [openMonth, setOpenMonth] = useState<string | null>(currentMonthKey())
-  const [view, setView] = useState<ViewWindow>('recent')
 
   const months = useMemo(() => (view === 'recent' ? rollingMonths() : monthsOfYear(view)), [view])
 
@@ -124,16 +120,38 @@ export function CardForecastTab() {
   }, [grid, transactions, installments, adjustments, postedPeriods, rules])
 
   const peak = Math.max(...rows.map((r) => r.total), 0)
+  return { months, years, activeCards, rows, peak }
+}
+
+// 2026-10 redesign: the month list became a column chart, so a spike is seen
+// before it's read. Each column stacks Posted (solid, at the baseline) under
+// Projected (the lighter extension) with a 2px gap; past months are greyed —
+// they're what was actually charged. Tapping a column opens its per-card
+// breakdown under the chart, which is also what a tooltip is on a phone.
+// Columns keep room for a three-letter month, so on a phone the chart scrolls
+// sideways rather than squeezing them, and it starts scrolled to this month.
+export function CardForecastTab() {
+  const thisMonth = currentMonthKey()
+  const [view, setView] = useState<ViewWindow>('recent')
+  const [picked, setPicked] = useState<string>(thisMonth)
+  const { months, years, activeCards, rows, peak } = useCardForecast(view)
+  const thisMonthRef = useRef<HTMLButtonElement>(null)
+
+  useEffect(() => {
+    thisMonthRef.current?.scrollIntoView({ inline: 'center', block: 'nearest' })
+  }, [view])
 
   if (activeCards.length === 0) {
     return <p className="text-sm text-muted-foreground">No credit cards yet.</p>
   }
 
+  const pickedRow = rows.find((r) => r.month === picked)
+
   return (
-    <div className="space-y-4">
+    <div className="space-y-3">
       <div className="flex items-center justify-between gap-3">
         {/* The span, not the mode name — the picker already says the mode,
-            and what's useful here is knowing how far the list actually runs. */}
+            and what's useful here is knowing how far the chart actually runs. */}
         <p className="truncate text-sm text-muted-foreground">
           {monthLabel(months[0])} – {monthLabel(months[months.length - 1])}
         </p>
@@ -150,64 +168,70 @@ export function CardForecastTab() {
         </Select>
       </div>
 
-      <ul className="space-y-1.5">
-        {rows.map(({ month, cards, posted, projected, total }) => {
-          const isOpen = openMonth === month
-          const isPeak = total > 0 && total === peak
-          // Past cycles are settled fact. Future ones split Posted (installment
-          // periods, unescapable) from Projected (recurring, cancellable) —
-          // same total, very different meaning, so the row shows both.
-          const isPast = month < currentMonthKey()
-          return (
-            <li key={month} className="overflow-hidden rounded-xl border bg-card">
+      <div className="overflow-x-auto px-1">
+        <div className="grid min-w-full grid-flow-col auto-cols-[minmax(2.5rem,1fr)] items-end gap-1.5">
+          {rows.map(({ month, posted, projected, total }) => {
+            const isPeak = total > 0 && total === peak
+            const isPast = month < thisMonth
+            const name = monthLabel(month)
+            return (
               <button
+                key={month}
+                ref={month === thisMonth ? thisMonthRef : undefined}
                 type="button"
-                onClick={() => setOpenMonth(isOpen ? null : month)}
-                className="flex w-full items-center gap-2 px-3 py-2.5 text-left text-sm transition-colors active:bg-accent/60"
+                onClick={() => setPicked(month)}
+                aria-pressed={picked === month}
+                aria-label={`${name}: ${formatBaht(posted)}${isPast ? ' charged' : ' posted'}${projected > 0 ? `, ${formatBaht(projected)} projected` : ''}`}
+                title={`${name}: ${formatBaht(posted)}${projected > 0 ? ` + ${formatBaht(projected)} projected` : ''}`}
+                className={cn(
+                  'flex flex-col items-center gap-1 rounded-lg px-0.5 pt-1 pb-1.5 transition-colors',
+                  picked === month ? 'bg-muted' : 'active:bg-muted/60',
+                )}
               >
-                <span className="flex-1 truncate font-medium">{monthLabel(month)}</span>
-                {isPast && total > 0 && (
-                  <span className="shrink-0 text-[10px] text-muted-foreground">actual</span>
-                )}
-                {isPeak && (
-                  <span className="shrink-0 rounded-full bg-warning px-1.5 text-[10px] text-warning-foreground">
-                    highest
-                  </span>
-                )}
-                <span className={cn('shrink-0', total === 0 && 'text-muted-foreground')}>
-                  {formatBaht(posted)}
-                  {projected > 0 && <span className="text-muted-foreground"> + {formatBaht(projected)}</span>}
+                <span className={cn('h-3.5 text-[10px] tabular-nums', isPeak ? 'font-medium' : 'invisible')}>
+                  {Math.round(total / 1000)}k
                 </span>
-                <ChevronDown
-                  className={cn('size-4 shrink-0 text-muted-foreground transition-transform', isOpen && 'rotate-180')}
-                />
+                <StackBar posted={posted} projected={projected} peak={peak} past={isPast} />
+                <span className={cn('text-[11px]', month === thisMonth ? 'font-semibold' : 'text-muted-foreground')}>
+                  {name.slice(0, 3)}
+                </span>
               </button>
+            )
+          })}
+        </div>
+      </div>
 
-              {isOpen && (
-                <ul className="divide-y border-t">
-                  {cards.map(({ card, cycle, posted: cardPosted, projected: cardProjected }) => (
-                    <li key={card.id} className="flex items-center gap-2 px-3 py-2 text-sm">
-                      <span className="min-w-0 flex-1">
-                        <span className="block truncate">{card.name}</span>
-                        <span className="block truncate text-xs text-muted-foreground">
-                          {dayMonthLabel(cycle.start)} – {dayMonthLabel(cycle.end)} · due {dayMonthLabel(cycle.dueDate)}
-                        </span>
-                      </span>
-                      <span className="shrink-0">
-                        {formatBaht(cardPosted)}
-                        {cardProjected > 0 && <span className="text-muted-foreground"> + {formatBaht(cardProjected)}</span>}
-                      </span>
-                    </li>
-                  ))}
-                  {cards.length === 0 && (
-                    <li className="px-3 py-2 text-sm text-muted-foreground">Nothing due this month.</li>
-                  )}
-                </ul>
-              )}
-            </li>
-          )
-        })}
-      </ul>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1 px-1 text-[11px] text-muted-foreground">
+        <span className="flex items-center gap-1"><span className="size-2.5 rounded-sm bg-primary" /> Posted</span>
+        <span className="flex items-center gap-1"><span className="size-2.5 rounded-sm bg-primary/35" /> Projected</span>
+        <span className="flex items-center gap-1"><span className="size-2.5 rounded-sm bg-muted-foreground/35" /> Past (actual)</span>
+      </div>
+
+      {pickedRow && (
+        <div className="rounded-2xl bg-muted/60 p-3">
+          <div className="flex items-baseline justify-between gap-2 text-sm">
+            <span className="font-medium">
+              {monthLabel(pickedRow.month)}
+              {pickedRow.month < thisMonth && pickedRow.total > 0 && <span className="ml-1.5 text-xs font-normal text-muted-foreground">actual</span>}
+            </span>
+            <PostedProjected posted={pickedRow.posted} projected={pickedRow.projected} />
+          </div>
+          <ul className="mt-2 space-y-1.5">
+            {pickedRow.cards.map(({ card, cycle, posted, projected }) => (
+              <li key={card.id} className="flex items-center gap-2 text-sm">
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate">{card.name}</span>
+                  <span className="block truncate text-xs text-muted-foreground">
+                    {dayMonthLabel(cycle.start)} – {dayMonthLabel(cycle.end)} · due {dayMonthLabel(cycle.dueDate)}
+                  </span>
+                </span>
+                <PostedProjected posted={posted} projected={projected} />
+              </li>
+            ))}
+            {pickedRow.cards.length === 0 && <li className="text-sm text-muted-foreground">Nothing due this month.</li>}
+          </ul>
+        </div>
+      )}
 
       {/* pr-20 keeps the text clear of the floating FAB: this tab's content is
           often shorter than the viewport, so it can't just be scrolled out.
@@ -219,5 +243,35 @@ export function CardForecastTab() {
         included.
       </p>
     </div>
+  )
+}
+
+const BAR_HEIGHT = 96
+
+// Posted at the baseline, Projected stacked on top with a 2px surface gap;
+// only the ends that meet the baseline and the top are rounded.
+function StackBar({ posted, projected, peak, past }: { posted: number; projected: number; peak: number; past: boolean }) {
+  const scale = peak > 0 ? BAR_HEIGHT / peak : 0
+  const p = posted * scale
+  const q = projected * scale
+  return (
+    <div className="flex w-full flex-col justify-end" style={{ height: BAR_HEIGHT }}>
+      {q > 0 && <div className="rounded-t-[4px] bg-primary/35" style={{ height: Math.max(q, 2), marginBottom: p > 0 ? 2 : 0 }} />}
+      {p > 0 && (
+        <div
+          className={cn(past ? 'bg-muted-foreground/35' : 'bg-primary', q > 0 ? 'rounded-b-[4px]' : 'rounded-[4px]')}
+          style={{ height: Math.max(p, 2) }}
+        />
+      )}
+    </div>
+  )
+}
+
+function PostedProjected({ posted, projected }: { posted: number; projected: number }) {
+  return (
+    <span className="shrink-0 tabular-nums">
+      {formatBaht(posted)}
+      {projected > 0 && <span className="text-muted-foreground"> + {formatBaht(projected)}</span>}
+    </span>
   )
 }
