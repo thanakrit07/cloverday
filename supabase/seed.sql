@@ -166,4 +166,54 @@ set settled_by_transaction_id = '10000000-0000-0000-0000-000000000301'
 where transaction_id = '10000000-0000-0000-0000-000000000202'
   and member_id = '10000000-0000-0000-0000-0000000000a2';
 
+-- Upcoming (2026-10): nothing in this seed had a recurring rule or an
+-- installment plan, so Upcoming's Coming up, card forecast and both
+-- management lists rendered empty locally. One of each shape that tab
+-- distinguishes: card-billed vs account-billed recurring (a card-billed one
+-- is Projected inside its card's bill, never a row of its own), monthly vs
+-- yearly (the November spike), an income rule, and card- vs account-billed
+-- installment plans (card periods post ahead, ADR-0001; one plan ≥ 5% p.a.
+-- for the rate badge). Start dates sit after the seed's other data and just
+-- ahead of "now" so no past occurrences materialise as pending review.
+insert into categories (id, household_id, name, kind, sort_order) values
+  ('10000000-0000-0000-0000-00000000010c', '10000000-0000-0000-0000-000000000000', 'เงินเดือน', 'income', 0);
+
+insert into recurring_rules (id, household_id, name, kind, category_id, category_kind, amount, owner_id, from_account_id, from_card_id, freq, day_of_month, month_of_year, start_date) values
+  -- account-billed, monthly: its own row in Coming up
+  ('10000000-0000-0000-0000-000000000401', '10000000-0000-0000-0000-000000000000', 'ค่าเน็ตบ้าน', 'expense',
+   '10000000-0000-0000-0000-000000000103', 'expense', 699, '10000000-0000-0000-0000-0000000000a1',
+   '10000000-0000-0000-0000-0000000000b1', null, 'monthly', 18, null, '2026-10-11'),
+  ('10000000-0000-0000-0000-000000000402', '10000000-0000-0000-0000-000000000000', 'อาหารแมว', 'expense',
+   '10000000-0000-0000-0000-000000000104', 'expense', 850, '10000000-0000-0000-0000-0000000000a2',
+   '10000000-0000-0000-0000-0000000000b2', null, 'monthly', 25, null, '2026-10-11'),
+  -- card-billed, monthly: Projected inside its card's bill
+  ('10000000-0000-0000-0000-000000000403', '10000000-0000-0000-0000-000000000000', 'สตรีมมิ่งรายเดือน', 'expense',
+   '10000000-0000-0000-0000-000000000106', 'expense', 419, '10000000-0000-0000-0000-0000000000a1',
+   null, '10000000-0000-0000-0000-0000000000c1', 'monthly', 12, null, '2026-10-11'),
+  ('10000000-0000-0000-0000-000000000404', '10000000-0000-0000-0000-000000000000', 'ค่าสมาชิกฟิตเนส', 'expense',
+   '10000000-0000-0000-0000-000000000107', 'expense', 1290, '10000000-0000-0000-0000-0000000000a2',
+   null, '10000000-0000-0000-0000-0000000000c2', 'monthly', 1, null, '2026-10-11'),
+  -- card-billed, yearly: one month's spike
+  ('10000000-0000-0000-0000-000000000405', '10000000-0000-0000-0000-000000000000', 'ประกันรถ', 'expense',
+   '10000000-0000-0000-0000-000000000105', 'expense', 8940, '10000000-0000-0000-0000-0000000000a1',
+   null, '10000000-0000-0000-0000-0000000000c1', 'yearly', 3, 11, '2026-10-11'),
+  -- income
+  ('10000000-0000-0000-0000-000000000406', '10000000-0000-0000-0000-000000000000', 'เงินเดือน', 'income',
+   '10000000-0000-0000-0000-00000000010c', 'income', 38500, '10000000-0000-0000-0000-0000000000a1',
+   '10000000-0000-0000-0000-0000000000b1', null, 'monthly', 25, null, '2026-10-11');
+
+insert into installments (id, household_id, name, category_id, start_date, total_periods, monthly_amount, card_id, account_id, annual_interest_rate, owner_id) values
+  -- card-billed, 0%, already three periods in
+  ('10000000-0000-0000-0000-000000000501', '10000000-0000-0000-0000-000000000000', 'โทรศัพท์ใหม่', 
+   '10000000-0000-0000-0000-000000000106', '2026-08-01', 10, 4190, '10000000-0000-0000-0000-0000000000c1', null, 0,
+   '10000000-0000-0000-0000-0000000000a1'),
+  -- card-billed, starts this month
+  ('10000000-0000-0000-0000-000000000502', '10000000-0000-0000-0000-000000000000', 'เครื่องซักผ้า',
+   '10000000-0000-0000-0000-000000000101', '2026-10-15', 6, 2650, '10000000-0000-0000-0000-0000000000c2', null, 0,
+   '10000000-0000-0000-0000-0000000000a2'),
+  -- account-billed, ≥ 5% p.a. (rate badge), first period coming up
+  ('10000000-0000-0000-0000-000000000503', '10000000-0000-0000-0000-000000000000', 'โน้ตบุ๊ก',
+   '10000000-0000-0000-0000-000000000106', '2026-10-28', 12, 1820, null, '10000000-0000-0000-0000-0000000000b2', 6.5,
+   '10000000-0000-0000-0000-0000000000a2');
+
 commit;
