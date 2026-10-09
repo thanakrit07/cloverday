@@ -829,6 +829,8 @@ to remember instead of one per screen.
 
 *(v3.9)* **Balances leads with what needs doing.** Between-us sits directly under the net-worth headline, above the instrument sections — it holds the only pending action on the screen (Settle up), and it renders nothing at all when no one owes anyone, so promoting it costs nothing on a quiet day. Everything below it is information.
 
+*(2026-10 redesign)* **Balances is grouped by person, not by instrument type.** Each member is a panel — their net worth at the top, their accounts and cards together, and their own held / set-aside pair at the foot — yours first, a former member's last; the Common Pot is a panel of its own. The household-wide held / set-aside pair (§6.3c) moves under the net-worth headline, which replaces the old expand-for-the-per-person-split toggle, since the panels are that split. Filtered to one person, it is their panel alone without a repeated total. Per-row Reconcile / Edit / Delete collapse into one ⋯ menu (swipe-to-delete stays). Chosen from four layouts on the `prototype/balances-layouts` branch.
+
 **The boundary between Balances and Upcoming is closed versus still moving.** A bill whose billing cycle has closed cannot change and is Balances'; anything still accumulating or merely projected is Upcoming's ([ADR-0012](./adr/0012-balances-rows-answer-what-is-due-next.md)). `CardForecastTab` keeps showing the current month — it is a *sequence*, and cutting a hole in it to avoid repeating one figure would cost more than the repetition does. Both screens go through `cycleBill`, so the two can never disagree.
 
 * **Records is the landing tab** — the daily habit is "open → jot → check what's
