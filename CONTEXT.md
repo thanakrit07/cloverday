@@ -1,4 +1,4 @@
-# Wealth Prof
+# Cloversky
 
 A shared personal-finance app for one household of two people. It answers three
 questions: where the money went, how much cash to set aside before each credit

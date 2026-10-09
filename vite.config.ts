@@ -14,8 +14,8 @@ export default defineConfig({
       registerType: 'prompt',
       includeAssets: ['favicon.svg', 'apple-touch-icon.png'],
       manifest: {
-        name: 'Wealth Prof',
-        short_name: 'Wealth Prof',
+        name: 'Cloversky',
+        short_name: 'Cloversky',
         description: 'Household finance tracker for two',
         lang: 'th',
         display: 'standalone',
@@ -24,9 +24,9 @@ export default defineConfig({
         // resize rather than lock to a phone orientation.
         start_url: '/',
         scope: '/',
-        // ADR-0009 Emerald palette — matches --background / --primary in src/index.css.
-        theme_color: '#007b45',
-        background_color: '#f7faf8',
+        // ADR-0022 Tomato palette — matches --primary / --background in src/index.css.
+        theme_color: '#d33318',
+        background_color: '#ffffff',
         icons: [
           { src: '/pwa-192x192.png', sizes: '192x192', type: 'image/png' },
           { src: '/pwa-512x512.png', sizes: '512x512', type: 'image/png' },

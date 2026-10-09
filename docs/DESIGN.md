@@ -1,4 +1,4 @@
-# Wealth Prof — System Analysis & Design (v3)
+# Cloversky — System Analysis & Design (v3)
 
 > Builds on [SPEC.md](./SPEC.md). Analyses the spec and proposes the architecture, data model, financial logic, UX and delivery plan for the real app in this repo.
 >
@@ -829,6 +829,8 @@ to remember instead of one per screen.
 
 *(v3.9)* **Balances leads with what needs doing.** Between-us sits directly under the net-worth headline, above the instrument sections — it holds the only pending action on the screen (Settle up), and it renders nothing at all when no one owes anyone, so promoting it costs nothing on a quiet day. Everything below it is information.
 
+*(2026-10 redesign)* **Balances is grouped by person, not by instrument type.** Each member is a panel — their net worth at the top, their accounts and cards together, and their own held / set-aside pair at the foot — yours first, a former member's last; the Common Pot is a panel of its own. The household-wide held / set-aside pair (§6.3c) moves under the net-worth headline, which replaces the old expand-for-the-per-person-split toggle, since the panels are that split. Filtered to one person, it is their panel alone without a repeated total. Per-row Reconcile / Edit / Delete collapse into one ⋯ menu (swipe-to-delete stays). Chosen from four layouts on the `prototype/balances-layouts` branch.
+
 **The boundary between Balances and Upcoming is closed versus still moving.** A bill whose billing cycle has closed cannot change and is Balances'; anything still accumulating or merely projected is Upcoming's ([ADR-0012](./adr/0012-balances-rows-answer-what-is-due-next.md)). `CardForecastTab` keeps showing the current month — it is a *sequence*, and cutting a hole in it to avoid repeating one figure would cost more than the repetition does. Both screens go through `cycleBill`, so the two can never disagree.
 
 * **Records is the landing tab** — the daily habit is "open → jot → check what's
@@ -839,6 +841,12 @@ to remember instead of one per screen.
   collapsed row. Both remember whether they were left open. Three lines of summary
   pushed the first transaction too far down the screen to check at a glance, which
   is the one thing the daily habit needs.
+  *(2026-10 redesign)* The single line became a headline: "Spent in <month>" as
+  one large figure with In / Net as a muted line under it — still the toggle for
+  the per-person split. The ledger below is a timeline (date in a left column,
+  the day's rows hanging off it, day totals under them) instead of a bordered
+  box, and expenses read in the foreground colour: red is kept for warnings and
+  a negative Net, not every expense.
 * **Settings leaves the tab bar** for a ⚙ in the top right of every tab — it is
   opened about monthly, and a tab is expensive real estate. Search is a permanent
   icon in the top left of Records, the only tab with anything to search.
@@ -891,6 +899,8 @@ The v2 quick-add (amount-first with the system numpad auto-opening over a scroll
 
 **Nothing is hidden.** D17 removed the Edit toggle precisely because recording on the partner's behalf cost three taps to reach, and collapsing rows behind a disclosure would rebuild that. Every row stays visible and one tap away; only the visual weight changes.
 
+*(2026-10 redesign)* **The weighting above is finally built.** The amount is a bare 5xl figure (no box) under a small Expense / Income / Transfer segment, and Category is the one large row (dashed while empty); a transfer's From / To take that weight instead. Account / card, Date and Rep/Inst compress into one strip of chips — the "lighter settled strip" — with Who bears under it and Note as an unboxed line. The picker panels match: filled tiles without outlines, the same selected ring as the chips, and account tiles carry the same type icon as Balances. Chosen from four layouts on the `prototype/entry-layouts` branch.
+
 Transfers swap the category panel for a from/to instrument picker, as before. Card-bill payment stays a preset on the card statement view (§7.3) with the amount pre-filled from `cycleBill`.
 
 ### 7.3 Other screens (only where they differ from the baseline)
@@ -919,6 +929,7 @@ Transfers swap the category panel for a from/to instrument picker, as before. Ca
   * **Both are shown at once, and the switch goes.** A toggle made the number's meaning depend on hidden state; showing the Posted portion solid and the Projected portion as an extension makes the *gap* legible, and the gap is the most useful thing on the screen — "next month spikes to ฿40,000, but ฿32,000 of it is debt you cannot escape and ฿8,000 is subscriptions you could cancel tomorrow" describes two very different situations that one toggled total cannot tell apart.
 
 * **Upcoming is organised by purpose, not by entity** *(v3.9)*. It was three stacked catalogues — card bills, recurring rules, installments — on the one tab whose entire identity is a time horizon (ADR-0004). Worse, two of them overlapped in silence: `projectedRecurringInCycle` counts a rule charged to a card (`billingCycle.ts:182`), and `RecurringTab`'s "Fixed costs" counts every active expense rule regardless of instrument, so a card-billed subscription sat inside both totals two inches apart. A forward view goes on top — one timeline of everything already in motion, computed once so it cannot double-count — and the catalogues below it become what they always were: management surfaces for adding, editing and switching things off. Now that Balances answers *how much to set aside right now* (§6.3c), what is left for this tab is seeing a spike before it arrives.
+  * *(2026-10 redesign)* **The spike is now drawn, not read.** The forward view leads with the tab's one number — everything due inside Coming up's 45-day horizon, Posted / Projected under it, the same headline shape as Records and Balances. Card bills become a column chart: Posted solid at the baseline, Projected stacked lighter above it, past months greyed as actual, the highest month labelled; tapping a column opens its per-card breakdown underneath (the phone's tooltip). Columns keep room for a three-letter month, so on a phone it scrolls sideways (starting on this month) rather than squeezing them; the Recent / per-year picker stays. Coming up follows as a dated timeline in Records' shape, rows wearing Balances' icon squares. Chosen from four layouts on the `prototype/upcoming-layouts` branch.
 * **Categories screen (Settings)** *(v3 — extends D10, added 2026-07-31)*: a dedicated settings screen, modelled on Money Manager's category manager, replacing the D10 inline-expand list. Income/Expense tabs at top. The list shows **main categories only**, each row: icon, name, an inline sub-count and preview ("Food(5) — Lunch, Dinner, Eating out…"), a **drag handle** for reordering (writes `sort_order`, replacing the D10 up/down-arrow buttons), an edit pencil, and a delete control. Tapping a row's name/icon area (not the drag handle) **drills down** into that main's own screen — same list chrome, header shows the main's name with its own edit pencil and an "add sub-category" `+`, body lists its subs with the same drag/edit/delete row shape. This replaces D10's inline expand-in-place with a real navigation stack, matching the reference app and keeping each screen's list short.
   * **Delete vs. archive**: the delete control checks first whether any transaction, recurring rule, or installment references the category (or, for a main, any of its subs). If none do, it **hard deletes** the row. If it's in use, delete instead **archives** it (existing D10 behaviour: a main's archive cascades to its subs) — a category with real financial history must never silently disappear out from under those records via a dangling FK or an orphaned reference; the choice of hard-delete-when-safe keeps the list from accumulating clutter from typos and abandoned experiments, which is the main reason a delete affordance was requested at all.
   * **Deleting is swipe-then-confirm** *(v3.1)*: rows reveal Delete on swipe-left (same gesture as the transaction ledger) rather than carrying a permanently visible destructive button, and the confirmation names both consequences that aren't guessable from a trash icon — a main takes its sub-categories with it, and anything still referenced is archived instead of removed.

@@ -5,7 +5,7 @@
       "Read(~/Downloads/*statement*)",
       "Read(~/Downloads/*Statement*)",
       "Read(~/Downloads/STM_*)",
-      "Read(~/Downloads/wealth-prof-*.csv)",
+      "Read(~/Downloads/cloversky-*.csv)",
       "Read(./statements/raw/**)"
     ]
   },

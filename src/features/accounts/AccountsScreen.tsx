@@ -1,18 +1,19 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import { differenceInCalendarDays, parse } from 'date-fns'
-import { ChevronDown, Pencil, Plus, RefreshCw } from 'lucide-react'
+import { CreditCard, MoreHorizontal, Plus } from 'lucide-react'
 import { toast } from 'sonner'
 import { DateField } from '@/components/DateField'
 import { SwipeableRow } from '@/components/SwipeableRow'
-import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Dialog, DialogContent, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog'
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from '@/components/ui/dropdown-menu'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Switch } from '@/components/ui/switch'
 import { OwnerSelect } from '@/components/OwnerSelect'
 import { useAccounts, useCreateAccount, useUpdateAccount, type Account, type AccountType } from '@/lib/accounts'
+import { ACCOUNT_ICON } from '@/lib/accountIcons'
 import { adjustmentCategory } from '@/lib/balanceAdjustments'
 import { useCardCycleAdjustments, type CardCycleAdjustment } from '@/lib/cardCycleAdjustments'
 import { useCards, useCreateCard, useUpdateCard, type Card } from '@/lib/cards'
@@ -219,16 +220,6 @@ function BetweenUsSection() {
   )
 }
 
-function OwnerHeading({ member, total }: { member: { display_name: string; color: string } | undefined; total: string }) {
-  return (
-    <div className="flex items-center gap-2 px-1 pt-1 text-xs text-muted-foreground">
-      <span className="size-2 shrink-0 rounded-full" style={{ backgroundColor: member?.color ?? 'currentColor' }} />
-      <span className="flex-1 truncate">{member?.display_name ?? 'Former member'}</span>
-      <span>{total}</span>
-    </div>
-  )
-}
-
 interface Props {
   person: PersonFilter
   onOpenAccount: (accountId: string) => void
@@ -255,7 +246,6 @@ export function AccountsScreen({ person, onOpenAccount, onOpenCard }: Props) {
   const [editingCard, setEditingCard] = useState<Card | 'new' | null>(null)
   const [reconciling, setReconciling] = useState<Account | null>(null)
   const [deleting, setDeleting] = useState<{ kind: InstrumentKind; id: string; name: string } | null>(null)
-  const [netWorthOpen, setNetWorthOpen] = useState(false)
 
   const today = todayIso()
   const allAccounts = accounts ?? []
@@ -293,14 +283,13 @@ export function AccountsScreen({ person, onOpenAccount, onOpenCard }: Props) {
   const accountsTotal = ownedAccounts.reduce((sum, a) => sum + accountBalance(a, allTxns, today), 0)
   const cardsSetAsideTotal = ownedCards.reduce((sum, c) => sum + setAsideFor(c), 0)
 
-  // "All" shows whose each instrument is: grouped by owner, yours first, each
-  // group with its own total. A household with one owner has nothing to tell
-  // apart, so the headings only appear once there are two or more.
+  // 2026-10 redesign: owner first, instrument type second. Each person is a
+  // panel with their own net worth and their accounts and cards together —
+  // yours first, a former member's last (groupByOwner) — and the Common Pot
+  // is a panel of its own. Filtered to one person, it is their panel alone.
   const memberIds = members.map((m) => m.id)
-  const accountGroups = groupByOwner(ownedAccounts, memberIds, self.id)
-  const cardGroups = groupByOwner(ownedCards, memberIds, self.id)
-  const showOwners = person === 'all' && new Set([...ownedAccounts, ...ownedCards].map((i) => i.owner_id)).size > 1
-  const ownerOf = (id: string) => members.find((m) => m.id === id)
+  const ownerGroups = groupByOwner<Account | Card>([...ownedAccounts, ...ownedCards], memberIds, self.id)
+  const hasPot = potAccounts.length > 0 || potCards.length > 0
 
   const accountRow = (account: Account) => (
     <AccountRow
@@ -329,139 +318,101 @@ export function AccountsScreen({ person, onOpenAccount, onOpenCard }: Props) {
       />
     )
   }
+  // §6.3c: a panel's footer is the held / set-aside pair for its own
+  // instruments — "this is what we have, this is what is already spoken for."
+  const panelFooter = (panelAccounts: Account[], panelCards: Card[]) =>
+    `${formatBaht(panelAccounts.reduce((sum, a) => sum + accountBalance(a, allTxns, today), 0))} held · ${formatBaht(
+      panelCards.reduce((sum, c) => sum + setAsideFor(c), 0),
+    )} set aside`
 
-  const netWorthRows = members.map((m) => ({
-    member: m,
-    amount: memberNetWorth(m.id, allAccounts, allCards, allTxns, allDebts, today),
-  }))
-  const householdNetWorth = netWorthRows.reduce((sum, r) => sum + r.amount, 0)
-  const headlineNetWorth = person === 'all' ? householdNetWorth : (netWorthRows.find((r) => r.member.id === person)?.amount ?? 0)
+  const householdNetWorth = members.reduce(
+    (sum, m) => sum + memberNetWorth(m.id, allAccounts, allCards, allTxns, allDebts, today),
+    0,
+  )
+  const headlineNetWorth =
+    person === 'all' ? householdNetWorth : memberNetWorth(person, allAccounts, allCards, allTxns, allDebts, today)
   const pendingReviewTotal = (pendingReview ?? []).reduce((sum, t) => sum + t.amount, 0)
 
   return (
-    <div className="mx-auto max-w-2xl space-y-6 p-4">
-      <button
-        type="button"
-        onClick={() => setNetWorthOpen((o) => !o)}
-        className="flex w-full items-center gap-2 rounded-2xl border bg-linear-to-br from-secondary/50 via-card to-accent/40 px-4 py-2.5 text-left text-sm shadow-sm"
-      >
-        <span className="flex-1 text-muted-foreground">Net worth</span>
-        <span className={cn('font-semibold', headlineNetWorth >= 0 ? 'text-good' : 'text-destructive')}>
-          {formatBaht(headlineNetWorth)}
-        </span>
-        {person === 'all' && (
-          <ChevronDown className={cn('size-4 shrink-0 text-muted-foreground transition-transform', netWorthOpen && 'rotate-180')} />
-        )}
-      </button>
-
-      {pendingReview && pendingReview.length > 0 && (
-        <p className="px-1 text-xs text-muted-foreground">
-          {formatBaht(pendingReviewTotal)} awaiting review, not counted above.
-        </p>
-      )}
-
-      {person === 'all' && netWorthOpen && netWorthRows.length > 0 && (
-        <div className="divide-y rounded-2xl border bg-card">
-          {netWorthRows.map((row) => (
-            <div key={row.member.id} className="flex items-center gap-2 px-3 py-2 text-sm">
-              <span className="size-2.5 shrink-0 rounded-full" style={{ backgroundColor: row.member.color }} />
-              <span className="flex-1 truncate">{row.member.display_name}</span>
-              <span className={row.amount >= 0 ? 'text-good' : 'text-destructive'}>{formatBaht(row.amount)}</span>
-            </div>
-          ))}
+    <div className="mx-auto max-w-2xl space-y-6 p-4 md:max-w-4xl">
+      <div className="flex items-end justify-between gap-4 px-1 pt-2">
+        <div className="min-w-0">
+          <span className="text-[13px] text-muted-foreground">Net worth</span>
+          <span
+            className={cn(
+              'mt-1 block text-3xl font-semibold leading-none tracking-[-0.035em] tabular-nums',
+              headlineNetWorth < 0 && 'text-destructive',
+            )}
+          >
+            {formatBaht(headlineNetWorth)}
+          </span>
+          {/* D20's household-wide pair, so it survives the split into panels. */}
+          <span className="mt-2 block text-xs tabular-nums text-muted-foreground">
+            {formatBaht(accountsTotal)} held · {formatBaht(cardsSetAsideTotal)} set aside
+          </span>
+          {pendingReview && pendingReview.length > 0 && (
+            <span className="mt-1 block text-xs text-muted-foreground">
+              {formatBaht(pendingReviewTotal)} awaiting review, not counted above.
+            </span>
+          )}
         </div>
-      )}
+        <div className="flex shrink-0 gap-1 pb-1">
+          <Button size="sm" variant="outline" onClick={() => setEditingAccount('new')}>
+            <Plus className="size-4" />
+            Account
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => setEditingCard('new')}>
+            <Plus className="size-4" />
+            Card
+          </Button>
+        </div>
+      </div>
 
       {/* Between Us holds the only pending action on this screen (Settle
           up) and renders nothing when no one owes anyone, so promoting it
-          above the instrument sections costs nothing on a quiet day. */}
+          above the instrument panels costs nothing on a quiet day. */}
       <BetweenUsSection />
 
-      {(potAccounts.length > 0 || potCards.length > 0) && (
-        <section className="space-y-2">
-          <div className="flex items-center justify-between">
-            <h2 className="text-sm font-medium text-muted-foreground">Common pot</h2>
-            <span className="text-sm font-medium">{formatBaht(potBalance)}</span>
-          </div>
-          <ul className="space-y-1">
-            {potAccounts.map((account) => (
-              <AccountRow
-                key={account.id}
-                account={account}
-                balance={accountBalance(account, allTxns, today)}
-                lastConfirmedDate={lastConfirmedDate(account, allTxns)}
-                onOpen={() => onOpenAccount(account.id)}
-                onEdit={() => setEditingAccount(account)}
-                onReconcile={() => setReconciling(account)}
-                onDelete={() => setDeleting({ kind: 'account', id: account.id, name: account.name })}
-              />
-            ))}
-            {potCards.map((card) => {
-              const { bill, dueDate } = closedBillFor(card, allTxns, allInstallments, postedPeriodKeys, allAdjustments, today)
-              return (
-                <CardRow
-                  key={card.id}
-                  card={card}
-                  bill={bill}
-                  dueDate={dueDate}
-                  outstanding={cardOutstanding(card, allTxns)}
-                  onOpen={() => !card.archived && onOpenCard(card.id)}
-                  onEdit={() => setEditingCard(card)}
-                  onDelete={() => setDeleting({ kind: 'card', id: card.id, name: card.name })}
-                />
-              )
-            })}
-          </ul>
-        </section>
-      )}
-
-      <section className="space-y-2">
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-medium text-muted-foreground">Accounts</h2>
-          <div className="flex items-center gap-2">
-            {ownedAccounts.length > 0 && <span className="text-sm font-medium">{formatBaht(accountsTotal)}</span>}
-            <Button size="sm" variant="outline" onClick={() => setEditingAccount('new')}>
-              <Plus className="size-4" />
-              Add
-            </Button>
-          </div>
-        </div>
-        <ul className="space-y-1">
-          {showOwners
-            ? accountGroups.map((g) => (
-                <li key={g.ownerId} className="space-y-1">
-                  <OwnerHeading member={ownerOf(g.ownerId)} total={formatBaht(g.items.reduce((sum, a) => sum + accountBalance(a, allTxns, today), 0))} />
-                  <ul className="space-y-1">{g.items.map(accountRow)}</ul>
-                </li>
-              ))
-            : ownedAccounts.map(accountRow)}
-          {ownedAccounts.length === 0 && <p className="text-sm text-muted-foreground">No accounts yet.</p>}
-        </ul>
-      </section>
-
-      <section className="space-y-2">
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-medium text-muted-foreground">Credit cards</h2>
-          <div className="flex items-center gap-2">
-            {ownedCards.length > 0 && <span className="text-sm font-medium">{formatBaht(cardsSetAsideTotal)} set aside</span>}
-            <Button size="sm" variant="outline" onClick={() => setEditingCard('new')}>
-              <Plus className="size-4" />
-              Add
-            </Button>
-          </div>
-        </div>
-        <ul className="space-y-1">
-          {showOwners
-            ? cardGroups.map((g) => (
-                <li key={g.ownerId} className="space-y-1">
-                  <OwnerHeading member={ownerOf(g.ownerId)} total={`${formatBaht(g.items.reduce((sum, c) => sum + setAsideFor(c), 0))} set aside`} />
-                  <ul className="space-y-1">{g.items.map(cardRow)}</ul>
-                </li>
-              ))
-            : ownedCards.map(cardRow)}
-          {ownedCards.length === 0 && <p className="text-sm text-muted-foreground">No cards yet.</p>}
-        </ul>
-      </section>
+      <div className="grid gap-3 md:grid-cols-2">
+        {ownerGroups.map((g) => {
+          const member = members.find((m) => m.id === g.ownerId)
+          const groupAccounts = ownedAccounts.filter((a) => a.owner_id === g.ownerId)
+          const groupCards = ownedCards.filter((c) => c.owner_id === g.ownerId)
+          return (
+            <InstrumentPanel
+              key={g.ownerId}
+              title={
+                <>
+                  <span className="size-2.5 shrink-0 rounded-full" style={{ backgroundColor: member?.color ?? 'currentColor' }} />
+                  <span className="truncate">
+                    {member?.display_name ?? 'Former member'}
+                    {g.ownerId === self.id && members.length > 1 ? ' (you)' : ''}
+                  </span>
+                </>
+              }
+              // Filtered to one person this would only repeat the headline.
+              total={
+                person === 'all'
+                  ? memberNetWorth(g.ownerId, allAccounts, allCards, allTxns, allDebts, today)
+                  : null
+              }
+              footer={panelFooter(groupAccounts, groupCards)}
+            >
+              {groupAccounts.map(accountRow)}
+              {groupCards.map(cardRow)}
+            </InstrumentPanel>
+          )
+        })}
+        {hasPot && (
+          <InstrumentPanel title="Common pot" total={potBalance} footer={panelFooter(potAccounts, potCards)}>
+            {potAccounts.map(accountRow)}
+            {potCards.map(cardRow)}
+          </InstrumentPanel>
+        )}
+        {ownerGroups.length === 0 && !hasPot && (
+          <p className="px-1 text-sm text-muted-foreground">No accounts or cards yet.</p>
+        )}
+      </div>
 
       {editingAccount && (
         <AccountDialog
@@ -490,6 +441,52 @@ export function AccountsScreen({ person, onOpenAccount, onOpenCard }: Props) {
   )
 }
 
+function InstrumentPanel({
+  title,
+  total,
+  footer,
+  children,
+}: {
+  title: ReactNode
+  total: number | null
+  footer: string
+  children: ReactNode
+}) {
+  return (
+    <section className="flex flex-col rounded-2xl bg-card p-4 ring-1 ring-border">
+      <div className="flex items-baseline justify-between gap-2">
+        <h2 className="flex min-w-0 items-center gap-2 text-sm font-medium">{title}</h2>
+        {total !== null && (
+          <span className={cn('text-xl font-semibold tracking-tight tabular-nums', total < 0 && 'text-destructive')}>
+            {formatBaht(total)}
+          </span>
+        )}
+      </div>
+      <ul className="mt-3 space-y-0.5">{children}</ul>
+      <span className="mt-auto pt-3 text-xs tabular-nums text-muted-foreground">{footer}</span>
+    </section>
+  )
+}
+
+function RowMenu({ label, items }: { label: string; items: { label: string; onSelect: () => void; destructive?: boolean }[] }) {
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button variant="ghost" size="icon" className="size-8 shrink-0 text-muted-foreground" aria-label={`More for ${label}`}>
+          <MoreHorizontal className="size-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end">
+        {items.map((item) => (
+          <DropdownMenuItem key={item.label} onSelect={item.onSelect} variant={item.destructive ? 'destructive' : 'default'}>
+            {item.label}
+          </DropdownMenuItem>
+        ))}
+      </DropdownMenuContent>
+    </DropdownMenu>
+  )
+}
+
 function AccountRow({
   account,
   balance,
@@ -511,29 +508,28 @@ function AccountRow({
   // genuinely old, and it qualifies the balance already there.
   const staleDays = lastConfirmedDate ? differenceInCalendarDays(new Date(), parse(lastConfirmedDate, 'yyyy-MM-dd', new Date())) : null
   const isStale = staleDays !== null && staleDays >= STALE_AFTER_DAYS
+  const Icon = ACCOUNT_ICON[account.type]
 
   return (
-    <li className="overflow-hidden rounded-lg border">
+    <li>
       <SwipeableRow onDelete={onDelete}>
-        <div className="flex items-center gap-2 px-3 py-2 text-sm">
-          <Badge variant="secondary" className="capitalize">
-            {account.type}
-          </Badge>
-          <button
-            onClick={onOpen}
-            disabled={account.archived}
-            className={account.archived ? 'flex-1 truncate text-left text-muted-foreground line-through' : 'flex-1 truncate text-left'}
-          >
-            <span className="block truncate">{account.name}</span>
-            {isStale && <span className="block text-xs text-muted-foreground">Not confirmed in {staleDays} days</span>}
+        <div className="flex items-center gap-2.5 py-1.5 text-sm">
+          <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-secondary text-secondary-foreground">
+            <Icon className="size-4" />
+          </span>
+          <button onClick={onOpen} disabled={account.archived} className="min-w-0 flex-1 text-left">
+            <span className={cn('block truncate', account.archived && 'text-muted-foreground line-through')}>{account.name}</span>
+            {isStale && <span className="block text-[11px] text-muted-foreground">Not confirmed in {staleDays} days</span>}
           </button>
-          <span className="text-muted-foreground">{formatBaht(balance)}</span>
-          <Button variant="ghost" size="icon" className="size-7" onClick={onReconcile} aria-label={`Reconcile ${account.name}`}>
-            <RefreshCw className="size-3.5" />
-          </Button>
-          <Button variant="ghost" size="icon" className="size-7" onClick={onEdit} aria-label="Edit">
-            <Pencil className="size-3.5" />
-          </Button>
+          <span className="tabular-nums">{formatBaht(balance)}</span>
+          <RowMenu
+            label={account.name}
+            items={[
+              { label: 'Reconcile', onSelect: onReconcile },
+              { label: 'Edit', onSelect: onEdit },
+              { label: 'Delete', onSelect: onDelete, destructive: true },
+            ]}
+          />
         </div>
       </SwipeableRow>
     </li>
@@ -550,8 +546,8 @@ function CardRow({
   onDelete,
 }: {
   card: Card
-  // §6.3c/ADR-0012: the row's own question is "what's due next", not
-  // capacity — outstanding/left below are the secondary line now.
+  // §6.3c/ADR-0012: the row's own question is "what's due next" — the
+  // closed cycle's bill and its due date; owed/left are the secondary line.
   bill: number
   dueDate: string
   outstanding: number
@@ -559,27 +555,27 @@ function CardRow({
   onEdit: () => void
   onDelete: () => void
 }) {
-  const available = card.credit_limit - outstanding
   return (
-    <li className="overflow-hidden rounded-lg border">
+    <li>
       <SwipeableRow onDelete={onDelete}>
-        <div className="flex items-center gap-2 px-3 py-2 text-sm">
-          <button
-            onClick={onOpen}
-            className={card.archived ? 'flex-1 truncate text-left text-muted-foreground line-through' : 'flex-1 truncate text-left'}
-          >
-            <span className="block truncate">{card.name}</span>
-            <span className="block truncate text-xs text-muted-foreground">
-              {formatBaht(outstanding)} owed · {formatBaht(available)} left
+        <div className="flex items-center gap-2.5 py-1.5 text-sm">
+          <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-warning text-warning-foreground">
+            <CreditCard className="size-4" />
+          </span>
+          <button onClick={onOpen} className="min-w-0 flex-1 text-left">
+            <span className={cn('block truncate', card.archived && 'text-muted-foreground line-through')}>{card.name}</span>
+            <span className="block truncate text-[11px] text-muted-foreground">
+              due {dayMonthLabel(dueDate)} · {formatBaht(outstanding)} owed · {formatBaht(card.credit_limit - outstanding)} left
             </span>
           </button>
-          <span className="shrink-0 text-right">
-            <span className="block">{formatBaht(bill)}</span>
-            <span className="block text-xs text-muted-foreground">due {dayMonthLabel(dueDate)}</span>
-          </span>
-          <Button variant="ghost" size="icon" className="size-7" onClick={onEdit} aria-label="Edit">
-            <Pencil className="size-3.5" />
-          </Button>
+          <span className="tabular-nums">{formatBaht(bill)}</span>
+          <RowMenu
+            label={card.name}
+            items={[
+              { label: 'Edit', onSelect: onEdit },
+              { label: 'Delete', onSelect: onDelete, destructive: true },
+            ]}
+          />
         </div>
       </SwipeableRow>
     </li>

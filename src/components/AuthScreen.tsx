@@ -57,7 +57,7 @@ export function AuthScreen() {
         : "Enter your email and we'll send a reset link."
 
   return (
-    <AuthLayout title="Wealth Prof" subtitle={subtitle} onSubmit={handleSubmit}>
+    <AuthLayout title="Cloversky" subtitle={subtitle} onSubmit={handleSubmit}>
       <label className="block space-y-1">
         <span className="text-sm text-foreground/80">Email</span>
         <input

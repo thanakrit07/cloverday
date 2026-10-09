@@ -1,9 +1,9 @@
 ---
 name: local-supabase
-description: "Use when the user wants to test a wealth-prof feature against local/mock data before touching production Supabase -- e.g. \"test this locally first\", \"spin up local db\", \"try this with mock data\", or when about to write a new migration that should be verified before applying to prod."
+description: "Use when the user wants to test a cloversky feature against local/mock data before touching production Supabase -- e.g. \"test this locally first\", \"spin up local db\", \"try this with mock data\", or when about to write a new migration that should be verified before applying to prod."
 ---
 
-# Local Supabase stack for wealth-prof
+# Local Supabase stack for cloversky
 
 Runs the full Supabase stack (Postgres + Auth + REST) on this machine via
 Docker, isolated from production. `.env.local` always points at prod --
