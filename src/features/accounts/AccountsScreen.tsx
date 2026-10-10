@@ -373,7 +373,10 @@ export function AccountsScreen({ person, onOpenAccount, onOpenCard }: Props) {
           above the instrument panels costs nothing on a quiet day. */}
       <BetweenUsSection />
 
-      <div className="grid gap-3 md:grid-cols-2">
+      {/* grid-cols-1 is not redundant: the implicit track is minmax(auto, 1fr),
+          which grows to a card row's unwrapped secondary line and made the
+          whole tab scroll sideways on a phone. */}
+      <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
         {ownerGroups.map((g) => {
           const member = members.find((m) => m.id === g.ownerId)
           const groupAccounts = ownedAccounts.filter((a) => a.owner_id === g.ownerId)
