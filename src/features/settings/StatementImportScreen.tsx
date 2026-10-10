@@ -4,6 +4,8 @@ import { toast } from 'sonner'
 import { Button } from '@/components/ui/button'
 import { CategoryOptions } from '@/components/CategoryOptions'
 import { Checkbox } from '@/components/ui/checkbox'
+import { Drawer, DrawerContent, DrawerTitle } from '@/components/ui/drawer'
+import { useIsDesktop } from '@/hooks/useIsDesktop'
 import { useAccounts } from '@/lib/accounts'
 import { useCards } from '@/lib/cards'
 import { useCategories } from '@/lib/categories'
@@ -26,6 +28,7 @@ import {
 import { useTransactions } from '@/lib/transactions'
 import { cn } from '@/lib/utils'
 import { StatementPdfSource, type StatementWarning } from './StatementPdfSource'
+import { StatementReviewMobile } from './StatementReviewMobile'
 import { UnknownNames } from './UnknownNames'
 import { WhoIsThis } from './WhoIsThis'
 import { removeSuperseded, useSupersededCandidates, type OrphanConversion } from '@/lib/superseded'
@@ -68,6 +71,7 @@ function clearDraft() {
 // only on Apply. Nothing is accepted by default — "Accept all" is one tap.
 export function StatementImportScreen({ onClose }: { onClose: () => void }) {
   const { householdId, self, members } = useHousehold()
+  const isDesktop = useIsDesktop()
   const queryClient = useQueryClient()
   const { data: accounts } = useAccounts(householdId)
   const { data: cards } = useCards(householdId)
@@ -256,12 +260,22 @@ export function StatementImportScreen({ onClose }: { onClose: () => void }) {
     }
   }
 
-  // Desktop pins everything above the table and scrolls the table alone. A
-  // phone hasn't the height for that: the file list, warnings and wrapped
-  // toolbars can fill the screen and leave the table no room at all, so there
-  // the whole page scrolls instead.
-  return (
-    <div className="flex min-h-full flex-col lg:h-full">
+  function startOver() {
+    clearDraft()
+    setCsvRows(null)
+    setWarnings([])
+    setFileMeta([])
+    setOrphans([])
+    setSupersede(new Set())
+    setAccepted(new Set())
+    setCategoryOverride(new Map())
+    setWhoOverride(new Map())
+  }
+  const unknownName = (r: StatementRow) =>
+    r.counterparty && actionable(r) && !rules.has(normalizeStatementText(r.counterparty)) ? r.counterparty : null
+
+  const notices = (
+    <>
       {fileMeta.length > 0 && (
         <div className="border-b p-2 text-xs">
           <span className="font-medium">Reviewing {fileMeta.length === 1 ? '1 file' : `${fileMeta.length} files`}:</span>
@@ -332,26 +346,68 @@ export function StatementImportScreen({ onClose }: { onClose: () => void }) {
           onAnswer={() => setAsking(unknown.filter((n) => pickedNames.has(n.key)).map((n) => n.name))}
         />
       )}
-      {asking && (
-        <WhoIsThis
-          names={asking}
-          accounts={accounts ?? []}
-          cards={cards ?? []}
+    </>
+  )
+  const whoIsThis = asking && (
+    <WhoIsThis
+      names={asking}
+      accounts={accounts ?? []}
+      cards={cards ?? []}
+      members={members}
+      categories={liveCategories}
+      saving={saveCounterparties.isPending}
+      onCancel={() => setAsking(null)}
+      onSave={async (answer) => {
+        try {
+          await saveCounterparties.mutateAsync({ names: asking, answer })
+          setPickedNames(new Set())
+          setAsking(null)
+        } catch (e) {
+          toast.error(e instanceof Error ? e.message : 'Could not save')
+        }
+      }}
+    />
+  )
+
+  if (!isDesktop) {
+    return (
+      <>
+        <StatementReviewMobile
+          rows={rows.map(effective)}
+          accepted={accepted}
+          onAccept={update}
+          onCategory={(line, categoryId) => setCategory([line], categoryId)}
+          whoOf={whoOf}
+          onWho={(line, who) => setWhoOverride((prev) => new Map(prev).set(line, who))}
           members={members}
-          categories={liveCategories}
-          saving={saveCounterparties.isPending}
-          onCancel={() => setAsking(null)}
-          onSave={async (answer) => {
-            try {
-              await saveCounterparties.mutateAsync({ names: asking, answer })
-              setPickedNames(new Set())
-              setAsking(null)
-            } catch (e) {
-              toast.error(e instanceof Error ? e.message : 'Could not save')
-            }
-          }}
+          categories={categories ?? []}
+          instrumentName={instrumentName}
+          unknownName={unknownName}
+          onAsk={(name) => setAsking([name])}
+          notices={notices}
+          toApply={toApply}
+          applying={applying}
+          onApply={apply}
+          onStartOver={startOver}
         />
-      )}
+        <Drawer open={asking != null} onOpenChange={(open) => !open && setAsking(null)}>
+          <DrawerContent>
+            <DrawerTitle className="sr-only">Who is this?</DrawerTitle>
+            <div className="pb-4">{whoIsThis}</div>
+          </DrawerContent>
+        </Drawer>
+      </>
+    )
+  }
+
+  // Desktop pins everything above the table and scrolls the table alone. A
+  // phone hasn't the height for that: the file list, warnings and wrapped
+  // toolbars can fill the screen and leave the table no room at all, so there
+  // the whole page scrolls instead.
+  return (
+    <div className="flex min-h-full flex-col lg:h-full">
+      {notices}
+      {whoIsThis}
       <div className="flex flex-wrap items-center gap-2 border-b p-2">
         {(['review', 'new', 'imported'] as Tab[]).map((t) => (
           <Button key={t} size="sm" variant={tab === t ? 'default' : 'ghost'} onClick={() => { setTab(t); setSelected(new Set()); setShown(PAGE) }}>
@@ -362,17 +418,7 @@ export function StatementImportScreen({ onClose }: { onClose: () => void }) {
           <Button
             size="sm"
             variant="ghost"
-            onClick={() => {
-              clearDraft()
-              setCsvRows(null)
-              setWarnings([])
-              setFileMeta([])
-              setOrphans([])
-              setSupersede(new Set())
-              setAccepted(new Set())
-              setCategoryOverride(new Map())
-              setWhoOverride(new Map())
-            }}
+            onClick={startOver}
           >
             Start over
           </Button>
@@ -469,7 +515,7 @@ export function StatementImportScreen({ onClose }: { onClose: () => void }) {
                   {showFile && <td className="max-w-40 truncate p-2 text-muted-foreground" title={r.file}>{r.file}</td>}
                   <td className="max-w-64 p-2">
                     <div className="truncate" title={r.description}>{r.description}</div>
-                    {r.counterparty && actionable(r) && !rules.has(normalizeStatementText(r.counterparty)) && (
+                    {unknownName(r) && (
                       <button className="text-primary underline underline-offset-2" onClick={() => setAsking([r.counterparty])}>
                         Who is {r.counterparty}?
                       </button>
