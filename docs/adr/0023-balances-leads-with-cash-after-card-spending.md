@@ -56,5 +56,19 @@ a projection — open cycles, installments, recurring costs and income still to
 come — and projections belong to Upcoming (ADR-0012's closed-versus-moving
 split).
 
-**The per-person panel totals are still net worth**, so the page currently
-carries two kinds of figure. Whether those should follow the headline is open.
+**Every panel uses the same figure.** A person's panel total is their own
+Cash After Card Spending and its footer is the same sum in the same words
+("cash · bills due · this cycle", zero parts left out), so the panels add up
+to the headline. A Common Pot gets the same treatment for its own
+instruments and, as before, stays out of the headline. Net worth is no longer
+shown anywhere on the screen; `memberNetWorth` and its ADR-0008 definition
+remain for whoever needs the figure next.
+
+**A closed bill past its due date and still unpaid says so** — "past due" on
+the card row and a count under the headline sum — since Balances exists to
+prompt that payment.
+
+**No month-over-month trend yet.** `accountBalance` at a past date reuses the
+account's newest anchor, so for any account reconciled since that date it
+returns the reading, not what the balance was then. A trend needs a
+historical balance built from the anchor history ADR-0013 keeps.
